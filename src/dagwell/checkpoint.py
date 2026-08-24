@@ -10,6 +10,7 @@ the returned checkpoint — the ledger/fold always wins.
 Fail-closed refusals:
 - unresolved seq gap or missing authoritative run_created (integrity
   degraded) → no operational checkpoint (P3/I27);
+- legacy-ambiguous run → never in a modern operational checkpoint (I23);
 - frozen graph mismatch (graph_version / graph_id vs run_created) → refused
   by the fold itself (I24);
 - identity (run_id, graph_version, input_hash) is recorded in the cache for
@@ -19,6 +20,7 @@ Fail-closed refusals:
 import json
 from pathlib import Path
 
+from dagwell import ids
 from dagwell.fold import fold
 
 
@@ -27,6 +29,10 @@ class CheckpointRefused(Exception):
 
 
 def operational_checkpoint(cache_path, ledger, graph, run_id: str) -> dict:
+    if ids.is_legacy(run_id):
+        raise CheckpointRefused(
+            "legacy-ambiguous run: synthetic history never participates in a "
+            "modern operational checkpoint (I23, §2, §7)")
     revents = ledger.run(run_id)
     folded = fold(graph, revents, run_id)   # refuses on frozen-graph mismatch
     if folded["integrity"] == "degraded":

@@ -96,6 +96,14 @@ def validate_event(event: dict) -> None:
     for field in ("schema_version", "event_id", "run_id", "occurred_at"):
         if not isinstance(event[field], str) or not event[field]:
             raise EventValidationError(f"{field} must be a non-empty string")
+    # The writer only ever emits the schema it implements. Accepting another
+    # version here would launder an event this code cannot interpret into the
+    # record; on READ such an event stays inert and signaled (ADR-0004),
+    # never reinterpreted as v1.
+    if event["schema_version"] != SCHEMA_VERSION:
+        raise EventValidationError(
+            f"unsupported schema_version {event['schema_version']!r}: this "
+            f"implementation writes {SCHEMA_VERSION!r} only")
     if event["event_type"] not in EVENT_TYPES:
         raise EventValidationError(
             f"unknown event_type: {event['event_type']!r} (canonical English enum only)")
@@ -143,6 +151,27 @@ def validate_event(event: dict) -> None:
         parent = event["parent_run_id"]
         if parent is not None and (not isinstance(parent, str) or not parent):
             raise EventValidationError("parent_run_id must be null or a non-empty string")
+        _validate_legacy_boundary(event)
+
+
+def _validate_legacy_boundary(event: dict) -> None:
+    """The reserved `legacy-` namespace and `legacy_ambiguous` travel together
+    (contract §2, I23).
+
+    A synthetic run aggregating indistinguishable V1 history must SAY so, and
+    a real execution must never be able to wear the label that exempts a run
+    from modern checkpoints.
+    """
+    legacy_id = ids.is_legacy(event["run_id"])
+    flag = event.get("legacy_ambiguous")
+    if legacy_id and flag is not True:
+        raise EventValidationError(
+            "a legacy- run_id is a synthetic aggregation label and must "
+            "carry legacy_ambiguous: true (§2, I23)")
+    if not legacy_id and flag is not None:
+        raise EventValidationError(
+            "legacy_ambiguous belongs to the reserved legacy- namespace "
+            "only — a real execution is never labeled ambiguous (I23)")
 
 
 def _require_str(event: dict, field: str) -> None:

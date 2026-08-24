@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dagwell.org/schemas/graph/v1.json",
+  "title": "DAGWELL graph definition (event schema_version 1)",
+  "description": "Shape of one executable graph definition document. This schema is a SHAPE AID for editors and external tooling, never a second source of truth: dagwell.graph.validate_graph is authoritative, and it enforces the rules a JSON Schema cannot express - unique node ids, dependencies that exist, acyclicity, and the R1 consecutive-same-family rule that requires r1_exception. A document accepted here may still be refused there; nothing accepted there is refused here.",
+  "type": "object",
+  "required": ["graph_id", "nodes"],
+  "properties": {
+    "graph_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable name of the graph (today also the operation, contract 2)."
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/node"}
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["id", "output_evidence"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "deps": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "description": "Node ids this node depends on; absent means no dependency."
+        },
+        "output_evidence": {
+          "enum": [
+            "artifact",
+            "remote_receipt",
+            "side_effect_receipt",
+            "structured_value"
+          ],
+          "description": "Declared output evidence type (I28). Omission is a hard error before real execution."
+        },
+        "verifications": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/verification"}
+        },
+        "no_verification": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Signed vacuum: the explicit reason a node declares no obligatory verification (I5)."
+        }
+      },
+      "oneOf": [
+        {"required": ["verifications"]},
+        {"required": ["no_verification"]}
+      ]
+    },
+    "verification": {
+      "type": "object",
+      "required": ["verification_id", "family"],
+      "properties": {
+        "verification_id": {"type": "string", "minLength": 1},
+        "family": {
+          "anyOf": [
+            {"enum": ["deterministic", "human"]},
+            {"type": "string", "pattern": "^model:[A-Za-z0-9][A-Za-z0-9._-]*$"}
+          ],
+          "description": "Closed IN FORM (contract 6). The model:<family> namespace itself is open (13.15) and is not registered here."
+        },
+        "r1_exception": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Written reason for two consecutive verifications of the same family (I16). Enforced by the validator, not expressible here."
+        }
+      }
+    }
+  }
+}

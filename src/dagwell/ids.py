@@ -14,6 +14,16 @@ import uuid
 LEGACY_PREFIX = "legacy-"
 
 
+def is_legacy(run_id) -> bool:
+    """Whether run_id lives in the reserved synthetic-legacy namespace (§2).
+
+    `legacy-<operation>` is the contract's acknowledged exception to run_id
+    opacity: an aggregation label for indistinguishable V1 history, never an
+    execution identity.
+    """
+    return isinstance(run_id, str) and run_id.startswith(LEGACY_PREFIX)
+
+
 def uuid7() -> uuid.UUID:
     """RFC 9562 UUIDv7. Uses the stdlib generator when available (Python 3.14+)."""
     if hasattr(uuid, "uuid7"):

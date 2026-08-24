@@ -93,12 +93,11 @@ def _outcomes_for(run_events, key, verification_attempt=None):
     return out
 
 
-def _returned_evidence_id(run_events, node_id, attempt):
+def _return_for(run_events, node_id, attempt):
     for e in run_events:
         if (e.get("event_type") == "node_returned"
                 and e.get("node_id") == node_id and e.get("attempt") == attempt):
-            evd = e.get("output_evidence") or {}
-            return evd.get("evidence_id")
+            return e
     return None
 
 
@@ -112,7 +111,15 @@ def _check_request(event, run_events):
         raise ev.EventValidationError(
             f"verification_requested for undispatched attempt "
             f"({node_id}, {attempt})")
-    recorded = _returned_evidence_id(run_events, node_id, attempt)
+    returned = _return_for(run_events, node_id, attempt)
+    # §4: only an `executed` attempt enters verification — successful
+    # transport AND required evidence. Neither half alone opens the gate.
+    if returned is not None and returned.get("exit_code") != 0:
+        raise ev.EventValidationError(
+            "verification_requested for an attempt whose transport failed — "
+            "unsuccessful transport never reaches executed (§4)")
+    recorded = (returned.get("output_evidence") or {}).get("evidence_id") \
+        if returned else None
     if recorded is None:
         raise ev.EventValidationError(
             "verification_requested before output evidence exists for the attempt")

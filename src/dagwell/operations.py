@@ -12,8 +12,9 @@ The ledger remains the sole source of truth: this module holds no state.
 """
 
 from dagwell import ids, verification as vf
+from dagwell.evidence import EvidenceValidationError, validate_output_evidence
 from dagwell.fold import fold
-from dagwell.graph import declared_verifications
+from dagwell.graph import declared_evidence_type, declared_verifications
 from dagwell.ledger import Ledger, events as ev
 
 
@@ -49,6 +50,10 @@ def _guard(ledger: Ledger, graph: dict, run_id: str, *, allow_landed=False,
     if folded["run_state"] == "landed" and not allow_landed:
         raise OperationRefused(
             "run is landed — the motive-removing human event must come first (§3)")
+    if ids.is_legacy(run_id):
+        raise OperationRefused(
+            "legacy-ambiguous run: a historical aggregation label is not an "
+            "execution — operational mutation refused (I23, §2)")
     return folded, revents
 
 
@@ -88,12 +93,30 @@ def dispatch(ledger: Ledger, graph: dict, run_id: str, node_id: str) -> dict:
 
 def record_return(ledger: Ledger, graph: dict, run_id: str, node_id: str,
                   attempt: int, exit_code: int, output_evidence=None) -> dict:
+    """Record the transport return and, when produced, the node's output
+    evidence — validated against the type the node DECLARES (I28).
+
+    Fail-closed on the evidence itself: a malformed payload is refused before
+    it reaches the ledger, so no ill-formed evidence claim is ever laundered
+    into the record. ABSENT evidence stays legal and honest — it is the fact
+    "the transport returned and produced nothing verifiable" and the fold
+    lands the attempt as `failed` (§4, §7).
+    """
     folded, _ = _guard(ledger, graph, run_id)
     node = _node(folded, node_id)
     if node["state"] != "running" or node["attempt"] != attempt:
         raise OperationRefused(
             f"node {node_id} attempt {attempt} is not in flight "
             f"(state {node['state']}, attempt {node['attempt']})")
+    if output_evidence is not None:
+        try:
+            validate_output_evidence(output_evidence,
+                                     declared_evidence_type(graph, node_id))
+        except EvidenceValidationError as exc:
+            raise OperationRefused(
+                f"malformed output evidence refused before recording: {exc} "
+                "(I28) — record the return without evidence to land the "
+                "attempt as failed") from exc
     e = _base(run_id, "node_returned", node_id=node_id, attempt=attempt,
               exit_code=exit_code)
     if output_evidence is not None:
@@ -275,11 +298,36 @@ def request_interrupt(ledger: Ledger, graph: dict, run_id: str) -> dict:
 
 
 def land_run(ledger: Ledger, graph: dict, run_id: str, reason: str) -> dict:
+    """Land the run: WIP saved, never truncated (§3).
+
+    Emitted only when nothing remains DISPATCHABLE nor in flight, the run is
+    not complete and no gate is pending. `stalled` covers "nothing in flight,
+    no pending gate"; the ready view covers "nothing dispatchable" — a node
+    the topology already unblocked is work waiting to be done, not a run at
+    rest. The two fold-verifiable motives must be supported by the projection;
+    `budget_exhausted` stays caller-asserted because the core owns no budget
+    model (§13.12 open — no formula is invented here).
+    """
     folded, _ = _guard(ledger, graph, run_id)
     if folded["run_state"] != "stalled":
         raise OperationRefused(
             f"run is {folded['run_state']} — run_landed applies only to a "
             "grounded run (§3)")
+    ready = sorted(nid for nid, i in folded["nodes"].items()
+                   if i["state"] == "ready")
+    if ready:
+        raise OperationRefused(
+            f"dispatchable work remains ({', '.join(ready)}) — run_landed "
+            "requires nothing dispatchable and nothing in flight (§3)")
+    states = {i["state"] for i in folded["nodes"].values()}
+    if reason == "human_rejection" and "rejected" not in states:
+        raise OperationRefused(
+            "reason human_rejection is unsupported by the projection: no "
+            "node is rejected (§3)")
+    if reason == "retries_exhausted" and "failed" not in states:
+        raise OperationRefused(
+            "reason retries_exhausted is unsupported by the projection: no "
+            "node is failed (§3)")
     return ledger.append(_base(run_id, "run_landed", reason=reason))
 
 

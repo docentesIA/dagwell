@@ -7,9 +7,11 @@ gates are first-class: successful transport alone never completes anything
 (`executed != completed`); completion is
 `successful transport + required output evidence + required approvals`.
 
-**Status: foundation bootstrap — no runtime yet.** The normative behavior is
-fully specified before implementation; the code grows in gated, incremental
-phases.
+**Status: the governed core (the contract's six incremental steps) is
+implemented; no adapters yet.** Nothing here dispatches real work or spends —
+transports belong to the Adapter Transport & Capability Model milestone, still
+ahead. The normative behavior is fully specified before implementation, and the
+code grows in gated, incremental phases.
 
 ## Where things are
 
@@ -20,8 +22,10 @@ phases.
 | Promoted-document manifest | [docs/contracts/MANIFEST.sha256](docs/contracts/MANIFEST.sha256) |
 | Architecture & Migration Plan | [docs/architecture/](docs/architecture/) |
 | Decision records (ADRs) | [docs/decisions/](docs/decisions/) |
+| Example graph definitions | [examples/](examples/) |
+| Shipped schemas (shape aid — the validator is authoritative) | [src/dagwell/schemas/](src/dagwell/schemas/) |
 | Contract integrity check | `python3 tools/check_contracts.py` |
-| Smoke test | `PYTHONPATH=src python3 tests/test_smoke.py` |
+| Zero-cost test suite | `python3 tools/run_tests.py` |
 
 Note: the Execution Contract's prose is Portuguese by design; all canonical
 protocol identifiers — event types, fields, enums, states — are English

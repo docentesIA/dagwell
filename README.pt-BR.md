@@ -13,9 +13,11 @@ transporte bem-sucedido sozinho nunca completa nada (`executed != completed`);
 completude é
 `successful transport + required output evidence + required approvals`.
 
-**Status: bootstrap da fundação — ainda sem runtime.** O comportamento
-normativo é totalmente especificado antes da implementação; o código cresce em
-fases incrementais com portões.
+**Status: o core governado (os seis passos incrementais do contrato) está
+implementado; ainda sem adapters.** Nada aqui despacha trabalho real nem gasta
+— transportes pertencem ao marco Adapter Transport & Capability Model, ainda
+por vir. O comportamento normativo é totalmente especificado antes da
+implementação, e o código cresce em fases incrementais com portões.
 
 ## Onde está o quê
 
@@ -26,8 +28,10 @@ fases incrementais com portões.
 | Manifesto de documentos promovidos | [docs/contracts/MANIFEST.sha256](docs/contracts/MANIFEST.sha256) |
 | Plano de Arquitetura & Migração | [docs/architecture/](docs/architecture/) |
 | Registros de decisão (ADRs) | [docs/decisions/](docs/decisions/) |
+| Definições de grafo de exemplo | [examples/](examples/) |
+| Schemas embarcados (auxílio de forma — o validador é a autoridade) | [src/dagwell/schemas/](src/dagwell/schemas/) |
 | Checagem de integridade dos contratos | `python3 tools/check_contracts.py` |
-| Teste de fumaça | `PYTHONPATH=src python3 tests/test_smoke.py` |
+| Suíte de testes de custo zero | `python3 tools/run_tests.py` |
 
 ## Licença
 

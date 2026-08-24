@@ -27,15 +27,28 @@ class GraphValidationError(Exception):
 
 
 def load_graph(text: bytes | str) -> dict:
-    """Parse + validate + freeze identity. Fail closed on any violation."""
+    """Parse + validate + freeze identity. Fail closed on any violation.
+
+    The parser reads the CANONICAL c1 form — the same text the digest
+    addresses and the same text the frozen snapshot stores (I24). Parsing the
+    raw form instead would let one `graph_version` yield two different parsed
+    graphs: NFC normalization can merge distinct code-point sequences, so a
+    node id decomposed in the raw file and composed in the snapshot would be
+    two different ids for one identity. Canonicalize first, then parse.
+    """
     try:
-        data = json.loads(text if isinstance(text, str) else text.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        canonical_text = canonical.canonicalize_text(text)
+    except UnicodeDecodeError as exc:
+        raise GraphValidationError(
+            f"graph definition is not valid UTF-8: {exc}") from exc
+    try:
+        data = json.loads(canonical_text)
+    except json.JSONDecodeError as exc:
         raise GraphValidationError(f"graph definition is not valid JSON: {exc}") from exc
     validate_graph(data)
     return {
         "graph_id": data["graph_id"],
-        "graph_version": canonical.graph_version(text),
+        "graph_version": canonical.graph_version(canonical_text),
         "nodes": {n["id"]: n for n in data["nodes"]},
         "order": [n["id"] for n in data["nodes"]],
     }
