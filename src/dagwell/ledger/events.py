@@ -112,6 +112,26 @@ def validate_event(event: dict) -> None:
                 raise EventValidationError(f"invalid exit_code: {ec!r}")
     if event["event_type"] in ("verification_requested", "verdict_recorded"):
         validate_verification_fields(event)
+    if event["event_type"] == "run_landed":
+        if event.get("reason") not in ("budget_exhausted", "retries_exhausted",
+                                       "human_rejection"):
+            raise EventValidationError(
+                f"run_landed reason must be closed-set, got {event.get('reason')!r}")
+    if event["event_type"] == "human_escalation":
+        _require_str(event, "node_id")
+        _require_int(event, "attempt", 1)
+        if event.get("reason") != "verifier_error":
+            raise EventValidationError(
+                f"human_escalation reason must be verifier_error, got {event.get('reason')!r}")
+    if event["event_type"] == "human_retry":
+        _require_str(event, "node_id")
+        _require_int(event, "attempt", 1)
+        _require_str(event, "actor")
+    if event["event_type"] == "budget_extended":
+        _require_str(event, "actor")
+        nb = event.get("new_budget")
+        if not isinstance(nb, (int, float)) or isinstance(nb, bool) or nb <= 0:
+            raise EventValidationError(f"invalid new_budget: {nb!r}")
     if event["event_type"] == "run_created":
         for field in RUN_CREATED_FIELDS:
             if field not in event:
