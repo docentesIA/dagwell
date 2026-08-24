@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 
 from dagwell.ledger import events as ev
+from dagwell.ledger import preconditions
 
 # ponytail: full-file scan per append; add an index when ledgers grow.
 
@@ -110,6 +111,11 @@ class Ledger:
                         "run_created (contract §2)")
 
                 ev.validate_event(event)
+
+                run_events = [e for e in existing if e.get("run_id") == run_id]
+                existing_authoritative = preconditions.check(event, run_events)
+                if existing_authoritative is not None:
+                    return existing_authoritative  # identical duplicate: no-op
 
                 if event["event_id"] in seen_ids:
                     raise ev.LedgerIntegrityError(
