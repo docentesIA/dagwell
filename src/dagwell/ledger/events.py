@@ -102,6 +102,14 @@ def validate_event(event: dict) -> None:
     if not isinstance(event["seq"], int) or isinstance(event["seq"], bool) \
             or event["seq"] < FIRST_SEQ:
         raise EventValidationError(f"invalid seq: {event['seq']!r}")
+    if event["event_type"] in ("node_dispatched", "node_returned",
+                               "orphan_detected"):
+        _require_str(event, "node_id")
+        _require_int(event, "attempt", 1)
+        if event["event_type"] == "node_returned":
+            ec = event.get("exit_code")
+            if not isinstance(ec, int) or isinstance(ec, bool):
+                raise EventValidationError(f"invalid exit_code: {ec!r}")
     if event["event_type"] in ("verification_requested", "verdict_recorded"):
         validate_verification_fields(event)
     if event["event_type"] == "run_created":

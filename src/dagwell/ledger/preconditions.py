@@ -16,7 +16,61 @@ def check(event: dict, run_events: list[dict]):
         _check_request(event, run_events)
     elif etype == "verdict_recorded":
         return _check_verdict(event, run_events)
+    elif etype == "node_dispatched":
+        _check_dispatch(event, run_events)
+    elif etype == "node_returned":
+        _check_return(event, run_events)
     return None
+
+
+def _attempts_for(run_events, node_id):
+    return sorted({e.get("attempt") for e in run_events
+                   if e.get("event_type") == "node_dispatched"
+                   and e.get("node_id") == node_id})
+
+
+def _check_dispatch(event, run_events):
+    """I14: (run_id, node_id, attempt) unique; duplicate dispatch of a
+    non-terminal triple refused; producer attempts are contiguous (k+1)."""
+    node_id, attempt = event["node_id"], event["attempt"]
+    prev = _attempts_for(run_events, node_id)
+    if attempt in prev:
+        raise ev.LedgerIntegrityError(
+            f"duplicate dispatch of ({node_id}, {attempt}) refused (I14)")
+    expected = (prev[-1] + 1) if prev else 1
+    if attempt != expected:
+        raise ev.LedgerIntegrityError(
+            f"producer attempt must be {expected} (contiguous k+1), got {attempt}")
+    if prev:
+        last = prev[-1]
+        closed = any(e.get("event_type") in ("node_returned", "orphan_detected")
+                     and e.get("node_id") == node_id and e.get("attempt") == last
+                     for e in run_events)
+        if not closed:
+            raise ev.LedgerIntegrityError(
+                f"attempt {last} of {node_id} is still in flight — "
+                "no concurrent duplicate attempt (I14)")
+
+
+def _check_return(event, run_events):
+    node_id, attempt = event["node_id"], event["attempt"]
+    if attempt not in _attempts_for(run_events, node_id):
+        raise ev.EventValidationError(
+            f"node_returned for undispatched attempt ({node_id}, {attempt})")
+    if any(e.get("event_type") == "node_returned"
+           and e.get("node_id") == node_id and e.get("attempt") == attempt
+           for e in run_events):
+        raise ev.LedgerIntegrityError(
+            f"second node_returned for ({node_id}, {attempt}) refused — "
+            "attempts are immutable (I14)")
+    evd = event.get("output_evidence")
+    if evd is not None:
+        if not isinstance(evd, dict):
+            raise ev.EventValidationError("output_evidence must be an object")
+        for field in ("type", "evidence_id"):
+            if not isinstance(evd.get(field), str) or not evd[field]:
+                raise ev.EventValidationError(
+                    f"output_evidence requires non-empty {field}")
 
 
 # -- helpers ---------------------------------------------------------------
