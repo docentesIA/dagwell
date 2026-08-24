@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dagwell"
+version = "0.0.1"
+description = "Provider-agnostic orchestration engine: governed graphs over an event-sourced, append-only ledger."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+where = ["src"]
