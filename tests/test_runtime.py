@@ -35,7 +35,7 @@ def test_ready_and_dispatch_flow():
     with tempfile.TemporaryDirectory() as tmp:
         s = S(tmp)
         assert runtime.ready_nodes(s.graph, s.led, s.rid) == [("a", 1)]
-        runtime.dispatch_node(s.led, s.rid, "a", 1)
+        runtime.dispatch_node(s.led, s.graph, s.rid, "a")
         assert runtime.ready_nodes(s.graph, s.led, s.rid) == []
 
 
@@ -76,8 +76,8 @@ def test_cancelled_verification_refires_without_escalation():
         s.dispatch()
         s.ret()
         runtime.advance_verifications(s.led, s.graph, s.rid)
-        runtime.request_interrupt(s.led, s.rid)
-        runtime.cancel_verification(s.led, s.rid, "a", 1, "lint")
+        runtime.request_interrupt(s.led, s.graph, s.rid)
+        runtime.cancel_verification(s.led, s.graph, s.rid, "a", "lint")
         e = runtime.advance_verifications(s.led, s.graph, s.rid)
         assert [x["event_type"] for x in e] == ["verification_requested"]
         assert e[0]["verification_attempt"] == 2   # re-fire, no policy burn
@@ -177,7 +177,7 @@ def test_graceful_interrupt_is_inert_and_recoverable():
         s = S(tmp)
         s.dispatch()
         before = s.fold()["run_state"]
-        runtime.request_interrupt(s.led, s.rid)
+        runtime.request_interrupt(s.led, s.graph, s.rid)
         assert s.fold()["run_state"] == before     # intent is fold-inert
         r = runtime.resume(s.led, GRAPH_TEXT, AGENDA, s.rid,
                            still_in_progress=ALIVE)

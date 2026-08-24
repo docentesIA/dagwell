@@ -160,11 +160,15 @@ def human_retry(ledger: Ledger, graph: dict, run_id: str, node_id: str,
 
 def cancel_run(ledger: Ledger, graph: dict, run_id: str, actor: str) -> dict:
     """Cancel the run (absorbing terminal). Idempotent: cancelling a
-    cancelled run returns the existing event."""
+    cancelled run returns the existing event. A COMPLETED run can never
+    become cancelled (completed is the absolute terminal)."""
     folded, revents = _fold_for(ledger, graph, run_id)
     for e in revents:
         if e.get("event_type") == "run_cancelled":
             return e
+    if folded["run_state"] == "completed":
+        raise DecisionRefused(
+            "run is completed — a completed run cannot become cancelled")
     if ledger.sequence_gaps().get(run_id):
         raise DecisionRefused(
             "unresolved seq gap — mutable actions blocked (I27)")

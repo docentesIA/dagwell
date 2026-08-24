@@ -52,6 +52,8 @@ def fold(graph: dict, events: list[dict], run_id: str) -> dict:
             integrity = "degraded"
             anomalies.append(f"unresolved seq gap: missing {missing} (I27)")
 
+    revents = _normalize(revents, anomalies)
+
     founders = [e for e in revents if e.get("event_type") == "run_created"]
     identity = None
     if founders:
@@ -63,6 +65,21 @@ def fold(graph: dict, events: list[dict], run_id: str) -> dict:
     else:
         integrity = "degraded"
         anomalies.append("no authoritative run_created — identity not validatable")
+
+    if identity is not None:
+        if founders[0]["seq"] != ev.FIRST_SEQ:
+            anomalies.append(
+                f"run_created is not the first logical event "
+                f"(seq {founders[0]['seq']}) — historical violation")
+        if graph.get("graph_version") and \
+                identity.get("graph_version") != graph["graph_version"]:
+            raise ev.LedgerIntegrityError(
+                "frozen graph mismatch (I24): the supplied graph does not "
+                "correspond to run_created.graph_version — fold refused")
+        if graph.get("graph_id") and identity.get("graph_id") \
+                and identity["graph_id"] != graph["graph_id"]:
+            raise ev.LedgerIntegrityError(
+                "graph_id mismatch: supplied graph is not this run's graph")
 
     cancelled = any(e.get("event_type") == "run_cancelled" for e in revents)
 
@@ -263,3 +280,70 @@ def _open_nonhuman_verification(revents):
                        for o in outcomes):
                 return True
     return False
+
+
+# -- read-side authority/integrity normalization (audit hardening 2) -------
+
+def _normalize(revents, anomalies):
+    """Make causally impossible or malformed historical facts inert and
+    signaled (never repaired in place): unsupported schema versions;
+    malformed required domain fields; verdicts without a matching request or
+    with divergent binding; human substitution without the auditable
+    escalation precondition. First-by-seq behavior is preserved where the
+    contract defines it."""
+    normalized = []
+    requests = []      # accepted verification_requested events
+    escalations = []   # accepted human_escalation events
+    for e in revents:
+        seq = e.get("seq")
+        if e.get("schema_version") != ev.SCHEMA_VERSION:
+            anomalies.append(
+                f"unsupported schema_version {e.get('schema_version')!r} — "
+                f"event inert (seq {seq})")
+            continue
+        try:
+            ev.validate_event(e)
+        except ev.EventValidationError as exc:
+            anomalies.append(f"malformed event inert (seq {seq}): {exc}")
+            continue
+        etype = e["event_type"]
+        if etype == "verification_requested":
+            requests.append(e)
+        elif etype == "human_escalation":
+            escalations.append(e)
+        elif etype == "verdict_recorded":
+            req = next(
+                (r for r in requests
+                 if r.get("node_id") == e.get("node_id")
+                 and r.get("attempt") == e.get("attempt")
+                 and r.get("verification_id") == e.get("verification_id")
+                 and r.get("verification_attempt")
+                 == e.get("verification_attempt")),
+                None)
+            if req is None:
+                anomalies.append(
+                    f"verdict without matching verification_requested — "
+                    f"inert (seq {seq})")
+                continue
+            if e.get("evidence_id") != req.get("evidence_id"):
+                anomalies.append(
+                    f"verdict bound to divergent evidence_id — inert "
+                    f"(seq {seq})")
+                continue
+            if e.get("family") != req.get("family"):
+                if e.get("family") != "human":
+                    anomalies.append(
+                        f"verdict family mismatch — inert (seq {seq})")
+                    continue
+                substituted = any(
+                    esc.get("node_id") == e.get("node_id")
+                    and esc.get("attempt") == e.get("attempt")
+                    and esc["seq"] < seq
+                    for esc in escalations)
+                if not substituted:
+                    anomalies.append(
+                        f"human substitution without human_escalation — "
+                        f"inert (seq {seq})")
+                    continue
+        normalized.append(e)
+    return normalized

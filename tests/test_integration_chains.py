@@ -50,7 +50,7 @@ def test_chain_b_evidence_to_completed():
         _complete_node_a(s)
         s.dispatch(node="b")
         runtime.record_return(
-            s.led, s.rid, "b", 1, exit_code=0,
+            s.led, s.graph, s.rid, "b", 1, exit_code=0,
             output_evidence={"type": "structured_value", "evidence_id": EVID})
         f = s.fold()
         assert f["nodes"]["b"]["state"] == "completed"   # declared vacuum
@@ -78,7 +78,7 @@ def test_chain_c_human_rejection_blocked_retry_then_k_plus_1():
         human.human_retry(s.led, s.graph, s.rid, "a", actor="rey")
         r = runtime.resume(s.led, GRAPH_TEXT, AGENDA, s.rid)
         assert r["ready"] == [("a", 2)]               # producer attempt k+1
-        runtime.dispatch_node(s.led, s.rid, "a", 2)
+        runtime.dispatch_node(s.led, s.graph, s.rid, "a")
         assert s.fold()["nodes"]["a"]["state"] == "running"
 
 
@@ -130,8 +130,8 @@ def test_chain_f_graceful_interruption_then_resume():
         s.dispatch()
         s.ret()
         runtime.advance_verifications(s.led, s.graph, s.rid)   # lint va1 open
-        runtime.request_interrupt(s.led, s.rid)                # intent recorded
-        runtime.cancel_verification(s.led, s.rid, "a", 1, "lint")
+        runtime.request_interrupt(s.led, s.graph, s.rid)                # intent recorded
+        runtime.cancel_verification(s.led, s.graph, s.rid, "a", "lint")
         r = runtime.resume(s.led, GRAPH_TEXT, AGENDA, s.rid)
         # resume re-fired the cancelled verification (no policy burn)
         reqs = [e for e in s.led.run(s.rid)
@@ -154,7 +154,7 @@ def test_chain_g_abrupt_loss_orphan_retry_resume():
         human.human_retry(s.led, s.graph, s.rid, "a", actor="rey")
         r = runtime.resume(s.led, GRAPH_TEXT, AGENDA, s.rid)
         assert r["ready"] == [("a", 2)]
-        runtime.dispatch_node(s.led, s.rid, "a", 2)
+        runtime.dispatch_node(s.led, s.graph, s.rid, "a")
         s.ret(attempt=2)
         runtime.advance_verifications(s.led, s.graph, s.rid)
         assert s.fold()["nodes"]["a"]["state"] == "verifying"

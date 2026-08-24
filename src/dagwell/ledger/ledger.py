@@ -59,6 +59,17 @@ class Ledger:
                 gaps[run_id] = missing
         return gaps
 
+    def global_duplicate_event_ids(self) -> list[str]:
+        """Duplicate event_id detection ACROSS runs (audit hardening 2) —
+        detection/signal only; writes always refuse duplicates."""
+        seen, dups = set(), []
+        for e in self.events():
+            eid = e.get("event_id")
+            if eid in seen and eid not in dups:
+                dups.append(eid)
+            seen.add(eid)
+        return dups
+
     # -- writing -----------------------------------------------------------
 
     def append(self, event: dict) -> dict:

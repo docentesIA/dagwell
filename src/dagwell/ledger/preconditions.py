@@ -122,6 +122,13 @@ def _check_request(event, run_events):
 
     key = _vid_key(event)
     prev = _requests_for(run_events, key)
+    if (event.get("family") == "human" and prev
+            and any(r.get("family") != "human" for r in prev)
+            and not _unresolved_escalation(run_events, event["node_id"],
+                                           event["attempt"])):
+        raise ev.LedgerIntegrityError(
+            "human substitution request without an unresolved "
+            "human_escalation is refused (§4)")
     next_va = (max(e["verification_attempt"] for e in prev) + 1) if prev \
         else ev.FIRST_VERIFICATION_ATTEMPT
     if event["verification_attempt"] != next_va:
@@ -156,12 +163,19 @@ def _check_verdict(event, run_events):
     if event["evidence_id"] != request["evidence_id"]:
         raise ev.LedgerIntegrityError(
             "verdict bound to divergent evidence_id — decision refused (P5, §5)")
-    if event["family"] != request["family"] and event["family"] != "human":
-        # human substitution during escalation is the single legitimate
-        # family override (contract §4); anything else is refused.
-        raise ev.LedgerIntegrityError(
-            f"verdict family {event['family']!r} does not match requested "
-            f"family {request['family']!r}")
+    if event["family"] != request["family"]:
+        if event["family"] != "human":
+            raise ev.LedgerIntegrityError(
+                f"verdict family {event['family']!r} does not match "
+                f"requested family {request['family']!r}")
+        # human substitution is legitimate ONLY through the auditable
+        # escalation path (contract §4): an unresolved human_escalation for
+        # this (node, attempt) must precede the substituting verdict.
+        if not _unresolved_escalation(run_events, event["node_id"],
+                                      event["attempt"]):
+            raise ev.LedgerIntegrityError(
+                "human substitution without an unresolved human_escalation "
+                "is refused (§4)")
 
     # P2: a closed verification attempt accepts no second outcome.
     closed = _outcomes_for(run_events, key, va)
@@ -186,3 +200,19 @@ def _check_verdict(event, run_events):
                     "conflicting verdict for an identity that already has an "
                     "authoritative completed verdict (§6)")
     return None
+
+
+def _unresolved_escalation(run_events, node_id, attempt) -> bool:
+    esc = [e for e in run_events
+           if e.get("event_type") == "human_escalation"
+           and e.get("node_id") == node_id and e.get("attempt") == attempt]
+    if not esc:
+        return False
+    last = max(e["seq"] for e in esc)
+    return not any(
+        e.get("node_id") == node_id and e.get("attempt") == attempt
+        and e["seq"] > last
+        and (e.get("event_type") == "human_retry"
+             or (e.get("event_type") == "verdict_recorded"
+                 and e.get("family") == "human"))
+        for e in run_events)

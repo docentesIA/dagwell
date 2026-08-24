@@ -1,6 +1,19 @@
-"""Checkpoint = the completed-set derived by the fold. The materialized file
-is CACHE with a watermark — never a source of truth: on any divergence the
-ledger wins and the cache is recomputed (contract §7, I19).
+"""Operational checkpoint (contract §7, I19) — fail-closed, non-authoritative
+cache.
+
+The checkpoint is ALWAYS recomputed from the fold (the simplest correct
+implementation; a proof-preserving cache design may replace this later). The
+materialized cache file is write-through advisory output only: it is NEVER
+read to answer an operational question, so tampering with it can never affect
+the returned checkpoint — the ledger/fold always wins.
+
+Fail-closed refusals:
+- unresolved seq gap or missing authoritative run_created (integrity
+  degraded) → no operational checkpoint (P3/I27);
+- frozen graph mismatch (graph_version / graph_id vs run_created) → refused
+  by the fold itself (I24);
+- identity (run_id, graph_version, input_hash) is recorded in the cache for
+  audit, not for trust.
 """
 
 import json
@@ -9,38 +22,31 @@ from pathlib import Path
 from dagwell.fold import fold
 
 
-def derive(folded: dict) -> dict:
-    identity = folded.get("identity") or {}
-    return {
-        "run_id": folded["run_id"],
+class CheckpointRefused(Exception):
+    pass
+
+
+def operational_checkpoint(cache_path, ledger, graph, run_id: str) -> dict:
+    revents = ledger.run(run_id)
+    folded = fold(graph, revents, run_id)   # refuses on frozen-graph mismatch
+    if folded["integrity"] == "degraded":
+        raise CheckpointRefused(
+            "integrity degraded (seq gap or missing run_created) — no "
+            "operational checkpoint may be materialized (P3/I27)")
+    identity = folded["identity"]
+    cp = {
+        "run_id": run_id,
+        "graph_id": identity.get("graph_id"),
         "graph_version": identity.get("graph_version"),
         "input_hash": identity.get("input_hash"),
-        "watermark": folded.get("_watermark"),
+        "watermark": max((e["seq"] for e in revents), default=0),
         "completed": folded["checkpoint"],
     }
+    if cache_path is not None:
+        Path(cache_path).write_text(
+            json.dumps(cp, ensure_ascii=False) + "\n", encoding="utf-8")
+    return cp
 
 
-def load_or_recompute(cache_path, ledger, graph, run_id: str) -> dict:
-    """Return the checkpoint, trusting the cache only when its identity and
-    watermark exactly match the ledger. Anything else → recompute + rewrite."""
-    cache_path = Path(cache_path)
-    revents = ledger.run(run_id)
-    watermark = max((e["seq"] for e in revents), default=0)
-
-    if cache_path.exists():
-        try:
-            cache = json.loads(cache_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            cache = None
-        if cache is not None:
-            folded_identity_ok = cache.get("run_id") == run_id
-            if (folded_identity_ok and cache.get("watermark") == watermark
-                    and cache.get("graph_version") == graph.get("graph_version")):
-                return cache
-
-    folded = fold(graph, revents, run_id)
-    folded["_watermark"] = watermark
-    cache = derive(folded)
-    cache_path.write_text(json.dumps(cache, ensure_ascii=False) + "\n",
-                          encoding="utf-8")
-    return cache
+# Backward-compatible name: semantics are now always-recompute + write-through.
+load_or_recompute = operational_checkpoint

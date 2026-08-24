@@ -198,15 +198,22 @@ def test_request_requires_produced_evidence():
         _expect(EventValidationError, _request, led, rid)          # not returned
 
 
-def test_human_substitution_family_override_allowed():
+def test_human_substitution_requires_escalation():
     with tempfile.TemporaryDirectory() as tmp:
         led = Ledger(Path(tmp) / "l.jsonl")
         rid = _executed_run(led)
         _request(led, rid, family="deterministic")
-        out = _verdict(led, rid, family="human", verdict="approved", actor="reviewer")
-        assert out["family"] == "human"       # escalation substitution path (§4)
-        # non-human family mismatch is refused
-        rid2 = None
+        # raw family override WITHOUT escalation is refused (hardening 1)
+        _expect(LedgerIntegrityError, _verdict, led, rid, family="human",
+                verdict="approved", actor="reviewer")
+        # close the attempt, escalate, then substitution is legitimate
+        _verdict(led, rid, status="error", verdict=None)
+        led.append(_node_event(rid, "human_escalation",
+                               reason="verifier_error"))
+        _request(led, rid, va=2, family="human")
+        out = _verdict(led, rid, va=2, family="human", verdict="approved",
+                       actor="reviewer")
+        assert out["family"] == "human"       # escalation substitution (§4)
 
 
 def test_nonhuman_family_mismatch_refused():
