@@ -110,13 +110,17 @@ def _node_projection(graph, node_id, revents):
 
     state = _attempt_state(graph, node_id, k, nevents)
 
-    if state in ("failed", "rejected") or _escalated_waiting(nevents, k, state):
-        if any(e.get("event_type") == "human_retry" and e.get("attempt") == k
-               and e.get("seq") > _terminalizing_seq(nevents, k)
-               for e in nevents):
-            # reopened by explicit human command: node returns to the
-            # pending/ready derived view awaiting dispatch of attempt k+1
-            return {"state": None, "attempt": k, "view": False}
+    retry_seqs = [e["seq"] for e in nevents
+                  if e.get("event_type") == "human_retry"
+                  and e.get("attempt") == k]
+    escalated = any(e.get("event_type") == "human_escalation"
+                    and e.get("attempt") == k for e in nevents)
+    if (retry_seqs
+            and max(retry_seqs) > _terminalizing_seq(nevents, k)
+            and (state in ("failed", "rejected") or escalated)):
+        # reopened by the explicit human command (I10): node returns to the
+        # pending/ready derived view awaiting dispatch of attempt k+1
+        return {"state": None, "attempt": k, "view": False}
     return {"state": state, "attempt": k, "view": False}
 
 
@@ -125,12 +129,6 @@ def _terminalizing_seq(nevents, k):
             and e.get("event_type") in ("node_returned", "orphan_detected",
                                         "verdict_recorded", "human_escalation")]
     return max(seqs) if seqs else 0
-
-
-def _escalated_waiting(nevents, k, state):
-    return state == "waiting_human" and any(
-        e.get("event_type") == "human_escalation" and e.get("attempt") == k
-        for e in nevents)
 
 
 def _attempt_state(graph, node_id, k, nevents):
@@ -197,9 +195,19 @@ def _verification_progress(graph, node_id, k, evidence_id, nevents):
     if any(req.get("family") == "human" and open_request(req)
            for req in requests):
         return "waiting_human"
-    if any(e.get("event_type") == "human_escalation" and e.get("attempt") == k
-           for e in nevents):
-        return "waiting_human"
+    esc = [e for e in nevents
+           if e.get("event_type") == "human_escalation"
+           and e.get("attempt") == k]
+    if esc:
+        last = max(e["seq"] for e in esc)
+        resolved = any(
+            e.get("attempt") == k and e["seq"] > last
+            and (e.get("event_type") == "human_retry"
+                 or (e.get("event_type") == "verdict_recorded"
+                     and e.get("family") == "human"))
+            for e in nevents)
+        if not resolved:
+            return "waiting_human"
     if not requests:
         return "executed"
     return "verifying"

@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def main() -> int:
-    env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
+    env = {**os.environ,
+           "PYTHONPATH": os.pathsep.join([str(ROOT / "src"), str(ROOT / "tests")])}
     files = sorted((ROOT / "tests").rglob("test_*.py"))
     failed = []
     for f in files:
