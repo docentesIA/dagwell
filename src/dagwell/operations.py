@@ -308,7 +308,9 @@ def land_run(ledger: Ledger, graph: dict, run_id: str, reason: str) -> dict:
     not complete and no gate is pending. `stalled` covers "nothing in flight,
     no pending gate"; the ready view covers "nothing dispatchable" — a node
     the topology already unblocked is work waiting to be done, not a run at
-    rest. The two fold-verifiable motives must be supported by the projection;
+    rest — and the executed view covers verification still owed, which is the
+    same truncation one step later. The two fold-verifiable motives must be
+    supported by the projection;
     `budget_exhausted` stays caller-asserted because the core owns no budget
     model (§13.12 open — no formula is invented here).
     """
@@ -323,6 +325,17 @@ def land_run(ledger: Ledger, graph: dict, run_id: str, reason: str) -> dict:
         raise OperationRefused(
             f"dispatchable work remains ({', '.join(ready)}) — run_landed "
             "requires nothing dispatchable and nothing in flight (§3)")
+    # A node that returned successfully still OWES its obligatory verification
+    # (`executed != completed`, I28). Landing over it freezes that verification
+    # behind a closed motive — the same WIP truncation the ready check prevents,
+    # one step further down the node's life. `verifying` cannot reach here: an
+    # open verification keeps the run out of `stalled`.
+    executed = sorted(nid for nid, i in folded["nodes"].items()
+                      if i["state"] == "executed")
+    if executed:
+        raise OperationRefused(
+            f"verification is still owed ({', '.join(executed)}) — a returned "
+            "node is not a node at rest, `executed != completed` (§3, I28)")
     states = {i["state"] for i in folded["nodes"].values()}
     if reason == "human_rejection" and "rejected" not in states:
         raise OperationRefused(

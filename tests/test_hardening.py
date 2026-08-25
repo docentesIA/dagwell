@@ -432,6 +432,32 @@ def test_unverifiable_evidence_type_cannot_be_left_unverified():
     load_graph(graph_with("artifact", {"no_verification": "leaf output"}))
 
 
+def test_landing_refuses_a_node_that_still_owes_verification():
+    """§3, I28 — the fifth audit finding. H6 closed landing over a READY node
+    and left the symmetric hole: a node that returned successfully still owes
+    its obligatory verification, and landing over it froze that verification
+    behind `budget_exhausted` — a motive the core cannot attest while §13.12
+    is open. Same WIP truncation, one step later in the node's life."""
+    with tempfile.TemporaryDirectory() as tmp:
+        s = S(tmp)
+        s.dispatch()
+        s.ret()
+        folded = fold(s.graph, s.led.run(s.rid), s.rid)
+        assert folded["nodes"]["a"]["state"] == "executed"
+        assert folded["run_state"] == "stalled"      # looks like rest, is not
+        for reason in ("budget_exhausted", "human_rejection", "retries_exhausted"):
+            _expect(OperationRefused, operations.land_run, s.led, s.graph,
+                    s.rid, reason)
+        # once the verification is actually done, landing is available again
+        s.request("lint", "deterministic")
+        s.verdict("lint", "deterministic")
+        s.request("gate", "human")
+        human.decide(s.led, s.graph, s.rid, "a", "rejected", actor="rey",
+                     reason="not good enough")
+        operations.land_run(s.led, s.graph, s.rid, "human_rejection")
+        assert fold(s.graph, s.led.run(s.rid), s.rid)["run_state"] == "landed"
+
+
 if __name__ == "__main__":
     import sys
     fns = [v for k, v in sorted(vars(sys.modules["__main__"]).items())
