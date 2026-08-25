@@ -29,12 +29,25 @@ def _fold_for(ledger: Ledger, graph: dict, run_id: str):
     return fold(graph, revents, run_id), revents
 
 
-def _guard_mutable(ledger: Ledger, folded: dict, run_id: str) -> None:
-    if folded["run_state"] == "cancelled":
+def _guard_mutable(ledger: Ledger, folded: dict, run_id: str,
+                   *, allow_cancel: bool = False) -> None:
+    """Every mutable human action passes here. The human wing is governed by
+    the same boundary as the machine wing (`operations._guard`): a run whose
+    identity the fold cannot vouch for, and a legacy-ambiguous label, refuse
+    mutation on BOTH wings or the boundary is decorative."""
+    if folded["run_state"] == "cancelled" and not allow_cancel:
         raise DecisionRefused("run is cancelled — human decisions are refused")
     if ledger.sequence_gaps().get(run_id):
         raise DecisionRefused(
             "unresolved seq gap — mutable actions blocked (I27, §13.16)")
+    if folded.get("integrity") != "ok" or folded.get("identity") is None:
+        raise DecisionRefused(
+            "run identity is not vouched for by the fold — diagnostic read "
+            "only, mutation refused (I25, §2)")
+    if ids.is_legacy(run_id):
+        raise DecisionRefused(
+            "legacy-ambiguous run: a historical aggregation label is not an "
+            "execution — mutation refused (I23, §2)")
 
 
 def decide(ledger: Ledger, graph: dict, run_id: str, node_id: str,
@@ -88,7 +101,7 @@ def decide(ledger: Ledger, graph: dict, run_id: str, node_id: str,
             run_id=run_id, node_id=node_id, attempt=k, verification_id=vid,
             verification_attempt=va, family="human", evidence_id=evidence_id))
 
-    return ledger.append(vf.verdict_recorded_event(
+    return ledger.append(_human_wing=True, event=vf.verdict_recorded_event(
         run_id=run_id, node_id=node_id, attempt=k, verification_id=vid,
         verification_attempt=va, family="human", actor=actor,
         verification_status="completed", verdict=verdict,
@@ -169,9 +182,7 @@ def cancel_run(ledger: Ledger, graph: dict, run_id: str, actor: str) -> dict:
     if folded["run_state"] == "completed":
         raise DecisionRefused(
             "run is completed — a completed run cannot become cancelled")
-    if ledger.sequence_gaps().get(run_id):
-        raise DecisionRefused(
-            "unresolved seq gap — mutable actions blocked (I27)")
+    _guard_mutable(ledger, folded, run_id, allow_cancel=True)
     e = {
         "schema_version": ev.SCHEMA_VERSION,
         "event_id": ids.new_event_id(),

@@ -64,7 +64,9 @@ def _request(led, rid, va=1, family="deterministic", evidence_id=EVID,
 def _verdict(led, rid, va=1, status="completed", verdict="approved",
              family="deterministic", evidence_id=EVID, actor="verifier",
              reason=None, verification_id="check-1"):
-    return led.append(vf.verdict_recorded_event(
+    # synthetic historical ledger, not a decision being issued (I8, §5)
+    return led.append(_human_wing=(family == "human"),
+                      event=vf.verdict_recorded_event(
         run_id=rid, node_id="n1", attempt=1, verification_id=verification_id,
         verification_attempt=va, family=family, actor=actor,
         verification_status=status, verdict=verdict, evidence_id=evidence_id,

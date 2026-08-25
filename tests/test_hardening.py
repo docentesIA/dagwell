@@ -14,6 +14,7 @@ from dagwell.checkpoint import CheckpointRefused, operational_checkpoint
 from dagwell.fold import fold
 from dagwell.graph import load_graph
 from dagwell.ledger import Ledger, LedgerIntegrityError, SCHEMA_VERSION, occurred_now
+from dagwell.ledger import events as ev_mod
 from dagwell.operations import OperationRefused
 from tests_scenario import AGENDA, EVID, GRAPH_TEXT, S
 
@@ -314,6 +315,97 @@ def test_fold_refuses_unrelated_graph():
         s = S(tmp)
         other = load_graph(GRAPH_TEXT.replace("demo", "demo2"))
         _expect(LedgerIntegrityError, fold, other, s.led.events(), s.rid)
+
+
+# -- H10: independent audit 2026-08-25 remediation -------------------------
+# Three holes two independent auditors (openai, xai) found and reproduced.
+# Each test fails if the hole reopens.
+
+def test_raw_append_cannot_issue_a_human_verdict():
+    """I8, §5 — a human verdict is a DECISION. Storage is not where decisions
+    are made: the boundary is worthless if raw append is a way around it."""
+    with tempfile.TemporaryDirectory() as tmp:
+        s = S(tmp)
+        _to_gate(s)
+        from dagwell import verification as vf
+        forged = vf.verdict_recorded_event(
+            run_id=s.rid, node_id="a", attempt=1, verification_id="gate",
+            verification_attempt=1, family="human", actor="an-adapter",
+            verification_status="completed", verdict="approved", evidence_id=EVID)
+        _expect(ev_mod.EventValidationError, s.led.append, forged)
+        # the governed wing still works — the fix closes a door, not the wing
+        human.decide(s.led, s.graph, s.rid, "a", "approved", actor="rey")
+        assert fold(s.graph, s.led.run(s.rid), s.rid)["nodes"]["a"]["state"] \
+            == "completed"
+
+
+def _orphan_ledger(tmp):
+    """A run whose founding run_created is absent: the fold cannot vouch for
+    its identity (integrity degraded), so it is diagnostic-read only."""
+    path = Path(tmp) / "l.jsonl"
+    path.write_text(json.dumps({
+        "schema_version": SCHEMA_VERSION, "event_id": ids.new_event_id(),
+        "run_id": "orphan", "seq": 1, "event_type": "node_dispatched",
+        "occurred_at": occurred_now(), "node_id": "a", "attempt": 1}) + "\n",
+        encoding="utf-8")
+    return Ledger(path), load_graph(GRAPH_TEXT)
+
+
+def test_unvouched_identity_refuses_mutation_on_both_wings():
+    """I25, §2 — the checkpoint and resume already refused; the write path
+    did not. Both wings must refuse or the boundary is one-sided."""
+    with tempfile.TemporaryDirectory() as tmp:
+        led, graph = _orphan_ledger(tmp)
+        assert fold(graph, led.run("orphan"), "orphan")["integrity"] != "ok"
+        _expect(OperationRefused, operations.record_return, led, graph,
+                "orphan", "a", attempt=1, exit_code=0,
+                output_evidence={"type": "artifact", "evidence_id": EVID,
+                                 "output_manifest": [{"name": "o.md",
+                                                      "artifact_digest": EVID}]})
+        _expect(human.DecisionRefused, human.cancel_run, led, graph,
+                "orphan", "rey")
+
+
+def test_legacy_run_refuses_mutation_on_the_human_wing_too():
+    """I23, §2 — operations refused legacy already; the human wing did not,
+    so `dagwell cancel` mutated a label that is not an execution."""
+    with tempfile.TemporaryDirectory() as tmp:
+        from dagwell import canonical
+        from dagwell.ledger import run_created_event
+        led = Ledger(Path(tmp) / "l.jsonl")
+        graph = load_graph(GRAPH_TEXT)
+        founding = run_created_event(
+            graph_id="demo", graph_version=canonical.graph_version(GRAPH_TEXT),
+            input_hash=canonical.input_hash(AGENDA), input_ref="synthetic://a")
+        founding["run_id"] = "legacy-demo"
+        founding["legacy_ambiguous"] = True
+        led.append(founding)
+        _expect(OperationRefused, operations.dispatch, led, graph,
+                "legacy-demo", "a")
+        _expect(human.DecisionRefused, human.cancel_run, led, graph,
+                "legacy-demo", "rey")
+        _expect(human.DecisionRefused, human.decide, led, graph,
+                "legacy-demo", "a", "approved", "rey")
+
+
+def test_healthy_run_still_completes_end_to_end():
+    """Regression guard: the three refusals above must not cost the ability
+    to run a healthy run to completion, nor to cancel one legitimately."""
+    with tempfile.TemporaryDirectory() as tmp:
+        s = S(tmp)
+        _to_gate(s)
+        human.decide(s.led, s.graph, s.rid, "a", "approved", actor="rey")
+        operations.dispatch(s.led, s.graph, s.rid, "b")
+        operations.record_return(s.led, s.graph, s.rid, "b", attempt=1,
+                                 exit_code=0,
+                                 output_evidence={"type": "structured_value",
+                                                  "evidence_id": EVID})
+        assert fold(s.graph, s.led.run(s.rid), s.rid)["run_state"] == "completed"
+    with tempfile.TemporaryDirectory() as tmp:
+        s = S(tmp)
+        s.dispatch()
+        human.cancel_run(s.led, s.graph, s.rid, actor="rey")
+        assert fold(s.graph, s.led.run(s.rid), s.rid)["run_state"] == "cancelled"
 
 
 if __name__ == "__main__":

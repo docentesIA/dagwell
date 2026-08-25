@@ -72,8 +72,13 @@ class Ledger:
 
     # -- writing -----------------------------------------------------------
 
-    def append(self, event: dict) -> dict:
+    def append(self, event: dict, *, _human_wing: bool = False) -> dict:
         """Append one event; returns it with its assigned seq.
+
+        `_human_wing` is INTERNAL: only `dagwell.human` may set it. A
+        `verdict_recorded` of `family: human` is a decision, not a record, and
+        the storage layer is not where decisions are made (I8, §5) — writing
+        one through this method is refused.
 
         Hard validations before any byte is written (contract §9, I20, I25):
         complete envelope; canonical English event_type; event_id uniqueness;
@@ -122,6 +127,14 @@ class Ledger:
                         "run_created (contract §2)")
 
                 ev.validate_event(event)
+
+                if (not _human_wing
+                        and event.get("event_type") == "verdict_recorded"
+                        and event.get("family") == "human"):
+                    raise ev.EventValidationError(
+                        "verdict_recorded of family human is a human DECISION: "
+                        "it is issued only by the governed human wing "
+                        "(dagwell.human), never through raw storage (I8, §5)")
 
                 run_events = [e for e in existing if e.get("run_id") == run_id]
                 existing_authoritative = preconditions.check(event, run_events)

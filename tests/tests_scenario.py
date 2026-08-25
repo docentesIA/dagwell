@@ -72,7 +72,10 @@ class S:
     def verdict(self, vid="lint", family="deterministic", node="a", attempt=1,
                 va=1, status="completed", verdict="approved", reason=None,
                 actor="verifier"):
-        return self.led.append(vf.verdict_recorded_event(
+        # family human goes through the storage path explicitly: these are
+        # SYNTHETIC historical ledgers, not decisions being issued (I8, §5).
+        return self.led.append(_human_wing=(family == "human"),
+                               event=vf.verdict_recorded_event(
             run_id=self.rid, node_id=node, attempt=attempt,
             verification_id=vid, verification_attempt=va, family=family,
             actor=actor, verification_status=status, verdict=verdict,

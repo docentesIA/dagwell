@@ -54,6 +54,10 @@ def _guard(ledger: Ledger, graph: dict, run_id: str, *, allow_landed=False,
         raise OperationRefused(
             "legacy-ambiguous run: a historical aggregation label is not an "
             "execution — operational mutation refused (I23, §2)")
+    if folded.get("integrity") != "ok" or folded.get("identity") is None:
+        raise OperationRefused(
+            "run identity is not vouched for by the fold — diagnostic read "
+            "only, mutation refused (I25, §2)")
     return folded, revents
 
 
