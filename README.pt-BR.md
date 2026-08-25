@@ -35,4 +35,7 @@ implementação, e o código cresce em fases incrementais com portões.
 
 ## Licença
 
-Apache License 2.0 — ver [LICENSE](LICENSE).
+Copyright 2026 Reinaldo Elias.
+
+Licenciado sob a Apache License, Versão 2.0 — ver [LICENSE](LICENSE) e
+[NOTICE](NOTICE).

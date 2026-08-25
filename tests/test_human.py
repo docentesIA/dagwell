@@ -156,6 +156,11 @@ def test_cli_presentation_surface():
         # refusal surfaces as nonzero exit, no traceback
         assert cli.main(["decide"] + base + ["--node", "a", "approved",
                                              "--actor", "rey"]) == 1
+        # an unknown run is refused, never projected: a mistyped id must not
+        # read as a real run sitting at rest
+        assert cli.main(["status", "--ledger", str(s.led.path),
+                         "--graph", str(gpath),
+                         "--run", "id-that-does-not-exist"]) == 1
 
 
 if __name__ == "__main__":

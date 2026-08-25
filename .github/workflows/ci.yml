@@ -1,0 +1,39 @@
+name: ci
+
+# The suite is zero-cost by policy: stdlib only, no quota, no paid inference,
+# no network, no external side effects. That is what makes it runnable on
+# every push instead of only when someone remembers.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Proves the floor declared in pyproject.toml (requires-python).
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Contract integrity
+        # A promoted normative document is pinned by hash; drift fails here
+        # before any behavior is judged against a contract that moved.
+        run: python tools/check_contracts.py
+
+      - name: Compile
+        run: python -m compileall -q src tests
+
+      - name: Zero-cost suite
+        run: python tools/run_tests.py

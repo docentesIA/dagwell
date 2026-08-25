@@ -34,4 +34,7 @@ English/canonical originals govern.
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Copyright 2026 Reinaldo Elias.
+
+Licensed under the Apache License, Version 2.0 — see [LICENSE](LICENSE) and
+[NOTICE](NOTICE).

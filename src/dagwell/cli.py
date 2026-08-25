@@ -68,7 +68,15 @@ def main(argv=None) -> int:
     ledger, graph = _load(args)
     try:
         if args.command == "status":
-            _print_status(fold(graph, ledger.run(args.run), args.run))
+            revents = ledger.run(args.run)
+            if not revents:
+                # A run with NO events is not a run at rest — it does not
+                # exist, and projecting it would make a mistyped id read as a
+                # real stalled run. A run that HAS events but no authoritative
+                # run_created is a different case: damaged identity, still
+                # readable diagnostically (§2).
+                raise LookupError(f"unknown run: {args.run}")
+            _print_status(fold(graph, revents, args.run))
         elif args.command == "decide":
             e = human.decide(ledger, graph, args.run, args.node, args.verdict,
                              actor=args.actor, reason=args.reason)
