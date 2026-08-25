@@ -19,6 +19,103 @@ implementado; ainda sem adapters.** Nada aqui despacha trabalho real nem gasta
 por vir. O comportamento normativo é totalmente especificado antes da
 implementação, e o código cresce em fases incrementais com portões.
 
+## Instalação
+
+Requer Python 3.11+. Sem dependências de runtime — o motor usa só a biblioteca padrão.
+
+```bash
+pipx install git+https://github.com/docentesIA/dagwell.git
+```
+
+Isso põe o comando `dagwell` no PATH, sem virtualenv para ativar. Se preferir um
+checkout (para rodar a suíte, ler o contrato ou mexer no código):
+
+```bash
+git clone https://github.com/docentesIA/dagwell.git && cd dagwell
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+python3 tools/check_contracts.py    # o contrato promovido ainda tem o hash de promovido
+python3 tools/run_tests.py          # 142 casos, custo zero, sem rede
+```
+
+A suíte imprime mensagens de recusa e um evento de exemplo enquanto roda (`refused:
+unknown run: …`). É a saída de testes que afirmam que a recusa acontece — não são
+erros. A última linha é o veredito.
+
+## O que ele faz hoje, e o que não faz
+
+**Não há adapters.** Nada aqui despacha trabalho para um provedor, sobe processo ou
+gasta coisa alguma. Isso é o marco Adapter Transport & Capability Model, ainda à frente.
+
+O que sobra não é nada, e é a parte que vale entender: **você faz o trabalho, o
+DAGWELL governa.** Você (um script, uma pessoa, um agente, um job de CI) executa o
+passo pelos meios que já usa; o motor decide se podia começar, registra o que voltou,
+recusa uma conclusão sem evidência ou sem aprovação, e reconstrói o estado inteiro
+só a partir dos eventos.
+
+| Disponível agora | Ainda não |
+|---|---|
+| Declarar um grafo; validação fail-closed antes de qualquer gasto | Despachar trabalho a um provedor |
+| Iniciar um run com identidade de grafo congelada | Transporte, política de retry ou modelo de orçamento |
+| Registrar despacho e retorno; recusar evidência malformada na fronteira | Execução automática de verificação |
+| Pedir verificações na ordem do contrato; registrar veredito de máquina | Liveness/timeout por transporte |
+| Gates humanos: aprovar, reprovar, retentar, escalar, cancelar | |
+| Aterrissar um run; retomar após interrupção; detectar órfãos | |
+| Estado determinístico via `fold`; checkpoint à prova de adulteração | |
+
+O CLI expõe o lado humano (`dagwell status | decide | human-retry | cancel`), que é a
+parte que uma pessoa conduz do terminal. O resto é a API de biblioteca abaixo — uma
+fronteira governada, não escrita crua no ledger.
+
+## Início rápido
+
+```python
+import json
+from pathlib import Path
+
+from dagwell import human, operations, runtime
+from dagwell.fold import fold
+from dagwell.ledger import Ledger
+
+GRAPH = json.dumps({"graph_id": "hello", "nodes": [
+    {"id": "write-report", "deps": [], "output_evidence": "artifact",
+     "verifications": [{"verification_id": "review", "family": "human"}]}]})
+
+Path("graph.json").write_text(GRAPH)          # the graph is a file you keep
+ledger = Ledger("run.jsonl")
+graph, founding = runtime.start_run(ledger, graph_text=GRAPH,
+                                    input_text="the task", input_ref="local://task")
+run_id = founding["run_id"]
+print("run:", run_id)
+
+operations.dispatch(ledger, graph, run_id, "write-report")
+
+# ---- you, your script, or an agent does the actual work here ----
+
+operations.record_return(
+    ledger, graph, run_id, "write-report", attempt=1, exit_code=0,
+    output_evidence={"type": "artifact", "evidence_id": "sha256:" + "ab" * 32,
+                     "output_manifest": [{"name": "report.md",
+                                          "artifact_digest": "sha256:" + "ab" * 32}]})
+
+print(fold(graph, ledger.run(run_id), run_id)["nodes"]["write-report"]["state"])
+# executed   <- transport succeeded AND evidence is present. Still not completed.
+
+operations.request_verification(ledger, graph, run_id, "write-report",
+                                verification_id="review")
+human.decide(ledger, graph, run_id, "write-report", "approved", actor="you")
+
+print(fold(graph, ledger.run(run_id), run_id)["nodes"]["write-report"]["state"])
+# completed  <- only now.
+```
+
+O `run.jsonl` guarda agora todos os eventos, e `graphs/` o grafo congelado. Não apague
+nada: o ledger é append-only e o estado é um fold dele. Para inspecionar o run:
+
+```bash
+dagwell status --ledger run.jsonl --graph graph.json --run <the run id printed above>
+```
+
 ## Onde está o quê
 
 | O quê | Onde |

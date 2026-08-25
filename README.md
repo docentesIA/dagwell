@@ -13,6 +13,104 @@ transports belong to the Adapter Transport & Capability Model milestone, still
 ahead. The normative behavior is fully specified before implementation, and the
 code grows in gated, incremental phases.
 
+## Install
+
+Requires Python 3.11+. No runtime dependencies — the engine is stdlib only.
+
+```bash
+pipx install git+https://github.com/docentesIA/dagwell.git
+```
+
+That puts the `dagwell` command on your PATH with no virtualenv to activate. If
+you prefer a checkout (to run the suite, read the contract, or hack on it):
+
+```bash
+git clone https://github.com/docentesIA/dagwell.git && cd dagwell
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+python3 tools/check_contracts.py    # the promoted contract still hashes as promoted
+python3 tools/run_tests.py          # 142 cases, zero cost, no network
+```
+
+The suite prints refusal messages and a sample event as it runs (`refused: unknown
+run: …`). That is the output of tests asserting that refusals happen — not errors.
+The last line is the verdict.
+
+## What it does today, and what it does not
+
+**There are no adapters.** Nothing here dispatches work to a provider, launches a
+process, or spends anything. That is the Adapter Transport & Capability Model
+milestone, still ahead.
+
+What that leaves is not nothing, and it is the part worth understanding: **you do
+the work, DAGWELL governs it.** You (a script, a human, an agent, a CI job) execute
+the step by whatever means you already use; the engine decides whether it was
+allowed to start, records what came back, refuses a completion that lacks evidence
+or approval, and can reconstruct the whole state from events alone.
+
+| Available now | Not yet |
+|---|---|
+| Declare a graph; fail-closed validation before any spend | Dispatching work to a provider |
+| Start a run with a frozen graph identity | Any transport, retry policy or budget model |
+| Record dispatch and return; refuse malformed evidence at the boundary | Automatic verification execution |
+| Request verifications in contract order; record machine verdicts | Liveness/timeout per transport |
+| Human gates: approve, reject, retry, escalate, cancel | |
+| Land a run; resume after interruption; detect orphans | |
+| Deterministic state via `fold`; tamper-proof checkpoint | |
+
+The CLI exposes the human side (`dagwell status | decide | human-retry | cancel`),
+because that is the part a person drives from a terminal. The rest is the library
+API shown below — a governed boundary, not raw ledger writes.
+
+## Quickstart
+
+```python
+import json
+from pathlib import Path
+
+from dagwell import human, operations, runtime
+from dagwell.fold import fold
+from dagwell.ledger import Ledger
+
+GRAPH = json.dumps({"graph_id": "hello", "nodes": [
+    {"id": "write-report", "deps": [], "output_evidence": "artifact",
+     "verifications": [{"verification_id": "review", "family": "human"}]}]})
+
+Path("graph.json").write_text(GRAPH)          # the graph is a file you keep
+ledger = Ledger("run.jsonl")
+graph, founding = runtime.start_run(ledger, graph_text=GRAPH,
+                                    input_text="the task", input_ref="local://task")
+run_id = founding["run_id"]
+print("run:", run_id)
+
+operations.dispatch(ledger, graph, run_id, "write-report")
+
+# ---- you, your script, or an agent does the actual work here ----
+
+operations.record_return(
+    ledger, graph, run_id, "write-report", attempt=1, exit_code=0,
+    output_evidence={"type": "artifact", "evidence_id": "sha256:" + "ab" * 32,
+                     "output_manifest": [{"name": "report.md",
+                                          "artifact_digest": "sha256:" + "ab" * 32}]})
+
+print(fold(graph, ledger.run(run_id), run_id)["nodes"]["write-report"]["state"])
+# executed   <- transport succeeded AND evidence is present. Still not completed.
+
+operations.request_verification(ledger, graph, run_id, "write-report",
+                                verification_id="review")
+human.decide(ledger, graph, run_id, "write-report", "approved", actor="you")
+
+print(fold(graph, ledger.run(run_id), run_id)["nodes"]["write-report"]["state"])
+# completed  <- only now.
+```
+
+`run.jsonl` now holds every event, and `graphs/` the frozen graph. Delete nothing:
+the ledger is append-only and the state is a fold of it. Inspect the run with:
+
+```bash
+dagwell status --ledger run.jsonl --graph graph.json --run <the run id printed above>
+```
+
 ## Where things are
 
 | What | Where |
