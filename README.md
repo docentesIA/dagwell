@@ -29,12 +29,14 @@ git clone https://github.com/docentesIA/dagwell.git && cd dagwell
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 python3 tools/check_contracts.py    # the promoted contract still hashes as promoted
-python3 tools/run_tests.py          # 142 cases, zero cost, no network
+python3 tools/run_tests.py          # 146 cases, zero cost, no network
 ```
 
-The suite prints refusal messages and a sample event as it runs (`refused: unknown
-run: …`). That is the output of tests asserting that refusals happen — not errors.
-The last line is the verdict.
+Then see the whole thing work, with nothing to set up:
+
+```bash
+dagwell demo
+```
 
 ## What it does today, and what it does not
 
@@ -58,9 +60,11 @@ or approval, and can reconstruct the whole state from events alone.
 | Land a run; resume after interruption; detect orphans | |
 | Deterministic state via `fold`; tamper-proof checkpoint | |
 
-The CLI exposes the human side (`dagwell status | decide | human-retry | cancel`),
-because that is the part a person drives from a terminal. The rest is the library
-API shown below — a governed boundary, not raw ledger writes.
+The CLI drives the whole cycle — `start`, `ready`, `dispatch`, `return`,
+`request-verification`, `verdict`, `decide`, `human-retry`, `land`, `resume`,
+`cancel`, `status` — so you never need to write Python to use it. The same
+operations are available as a library. **[Full manual: docs/USAGE.md](docs/USAGE.md)**
+([em português](docs/USAGE.pt-BR.md)).
 
 ## Quickstart
 
@@ -120,6 +124,7 @@ dagwell status --ledger run.jsonl --graph graph.json --run <the run id printed a
 | Promoted-document manifest | [docs/contracts/MANIFEST.sha256](docs/contracts/MANIFEST.sha256) |
 | Architecture & Migration Plan | [docs/architecture/](docs/architecture/) |
 | Decision records (ADRs) | [docs/decisions/](docs/decisions/) |
+| **How to use it, command by command** | **[docs/USAGE.md](docs/USAGE.md)** |
 | Example graph definitions | [examples/](examples/) |
 | Shipped schemas (shape aid — the validator is authoritative) | [src/dagwell/schemas/](src/dagwell/schemas/) |
 | Contract integrity check | `python3 tools/check_contracts.py` |
@@ -146,7 +151,7 @@ What makes it checkable is not who typed it:
   producer's family. Both returned REWORK REQUIRED.
 - **Every finding was reproduced** in the interpreter before being acted on. Two
   claims did not survive reproduction and were discarded — one from each auditor.
-- **The suite reports 142 cases across 12 files, 47 of them adversarial** (the
+- **The suite reports 146 cases across 13 files, 47 of them adversarial** (the
   T1-T22 matrix plus the hardening coverage), each written to fail if a specific
   hole reopens. Stdlib only, no network, no quota: `python3 tools/run_tests.py`
   prints the same counts for anyone who runs it.

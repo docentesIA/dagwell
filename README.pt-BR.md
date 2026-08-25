@@ -35,12 +35,14 @@ git clone https://github.com/docentesIA/dagwell.git && cd dagwell
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 python3 tools/check_contracts.py    # o contrato promovido ainda tem o hash de promovido
-python3 tools/run_tests.py          # 142 casos, custo zero, sem rede
+python3 tools/run_tests.py          # 146 casos, custo zero, sem rede
 ```
 
-A suíte imprime mensagens de recusa e um evento de exemplo enquanto roda (`refused:
-unknown run: …`). É a saída de testes que afirmam que a recusa acontece — não são
-erros. A última linha é o veredito.
+Depois veja tudo funcionando, sem precisar preparar nada:
+
+```bash
+dagwell demo
+```
 
 ## O que ele faz hoje, e o que não faz
 
@@ -63,9 +65,10 @@ só a partir dos eventos.
 | Aterrissar um run; retomar após interrupção; detectar órfãos | |
 | Estado determinístico via `fold`; checkpoint à prova de adulteração | |
 
-O CLI expõe o lado humano (`dagwell status | decide | human-retry | cancel`), que é a
-parte que uma pessoa conduz do terminal. O resto é a API de biblioteca abaixo — uma
-fronteira governada, não escrita crua no ledger.
+O CLI conduz o ciclo inteiro — `start`, `ready`, `dispatch`, `return`,
+`request-verification`, `verdict`, `decide`, `human-retry`, `land`, `resume`,
+`cancel`, `status` — então você nunca precisa escrever Python para usá-lo. As mesmas
+operações existem como biblioteca. **[Manual completo: docs/USAGE.pt-BR.md](docs/USAGE.pt-BR.md)**.
 
 ## Início rápido
 
@@ -125,6 +128,7 @@ dagwell status --ledger run.jsonl --graph graph.json --run <the run id printed a
 | Manifesto de documentos promovidos | [docs/contracts/MANIFEST.sha256](docs/contracts/MANIFEST.sha256) |
 | Plano de Arquitetura & Migração | [docs/architecture/](docs/architecture/) |
 | Registros de decisão (ADRs) | [docs/decisions/](docs/decisions/) |
+| **Como usar, comando a comando** | **[docs/USAGE.pt-BR.md](docs/USAGE.pt-BR.md)** |
 | Definições de grafo de exemplo | [examples/](examples/) |
 | Schemas embarcados (auxílio de forma — o validador é a autoridade) | [src/dagwell/schemas/](src/dagwell/schemas/) |
 | Checagem de integridade dos contratos | `python3 tools/check_contracts.py` |
@@ -146,7 +150,7 @@ O que o torna conferível não é quem digitou:
   do produtor. As duas devolveram REWORK REQUIRED.
 - **Cada achado foi reproduzido** no interpretador antes de virar correção. Duas
   afirmações não sobreviveram à reprodução e foram descartadas — uma de cada auditor.
-- **A suíte reporta 142 casos em 12 arquivos, 47 deles adversariais** (a matriz
+- **A suíte reporta 146 casos em 13 arquivos, 47 deles adversariais** (a matriz
   T1–T22 mais a cobertura de hardening), cada um escrito para falhar se um buraco
   específico reabrir. Só biblioteca padrão, sem rede, sem cota:
   `python3 tools/run_tests.py` imprime as mesmas contagens para quem rodar.

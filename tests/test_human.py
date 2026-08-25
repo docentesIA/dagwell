@@ -141,6 +141,15 @@ def test_escalation_human_retry_path():
         assert s.fold()["nodes"]["a"]["state"] == "ready"
 
 
+def _quiet(argv):
+    """cli.main with both streams captured — see tests/test_cli.py."""
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+    out, err = io.StringIO(), io.StringIO()
+    with redirect_stdout(out), redirect_stderr(err):
+        return cli.main(argv)
+
+
 def test_cli_presentation_surface():
     with tempfile.TemporaryDirectory() as tmp:
         s = S(tmp)
@@ -149,18 +158,20 @@ def test_cli_presentation_surface():
         gpath.write_text(GRAPH_TEXT, encoding="utf-8")
         base = ["--ledger", str(s.led.path), "--graph", str(gpath),
                 "--run", s.rid]
-        assert cli.main(["status"] + base) == 0
-        assert cli.main(["decide"] + base + ["--node", "a", "approved",
-                                             "--actor", "rey"]) == 0
+        # output is captured: a suite that prints refusal messages reads as a
+        # failing suite to whoever runs it for the first time
+        assert _quiet(["status"] + base) == 0
+        assert _quiet(["decide"] + base + ["--node", "a", "approved",
+                                           "--actor", "rey"]) == 0
         assert s.fold()["nodes"]["a"]["state"] == "completed"
         # refusal surfaces as nonzero exit, no traceback
-        assert cli.main(["decide"] + base + ["--node", "a", "approved",
-                                             "--actor", "rey"]) == 1
+        assert _quiet(["decide"] + base + ["--node", "a", "approved",
+                                           "--actor", "rey"]) == 1
         # an unknown run is refused, never projected: a mistyped id must not
         # read as a real run sitting at rest
-        assert cli.main(["status", "--ledger", str(s.led.path),
-                         "--graph", str(gpath),
-                         "--run", "id-that-does-not-exist"]) == 1
+        assert _quiet(["status", "--ledger", str(s.led.path),
+                       "--graph", str(gpath),
+                       "--run", "id-that-does-not-exist"]) == 1
 
 
 if __name__ == "__main__":
