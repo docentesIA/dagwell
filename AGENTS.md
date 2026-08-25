@@ -216,8 +216,18 @@ A map of contract §§1–10 — read the section before touching the area:
 
 ## 11. Git & Release Discipline
 
-- History is append-only in spirit: **no force-push, no history rewriting, no
-  deletion of published artifacts or ledger lines**.
+- History is append-only **from the first publication onward**. Once the
+  repository has been pushed to any remote, there is no force-push, no history
+  rewriting, and no deletion of published artifacts. Before that first push —
+  while the repository is local, unpushed, and has no forks or collaborators —
+  a whole-history rewrite is permitted **only** to correct authorship identity or
+  to sanitize metadata, **only** by explicit human decision, and **only** when a
+  decision record states what changed and why (see ADR-0006). Such a rewrite must
+  leave every tree byte-identical: a rewrite that alters content is a forbidden
+  rewrite, not a sanitization, at any point in the repository's life.
+- The **ledger** is outside this window entirely. It is append-only always (I2) —
+  nothing in it is ever deleted or rewritten, before or after publication,
+  mistakes included.
 - Stage deliberately, file by file. Never blind-add the working tree. Secrets scan
   is mandatory before commit.
 - **No publication without an explicit human approval**: pushing to a public
