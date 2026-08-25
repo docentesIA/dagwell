@@ -43,10 +43,14 @@ Precedence order:
    migration & sequence-gap reconciliation specs (§13.6, §13.16). Until they exist,
    the areas they govern are OPEN — see Open Questions Policy (§12 below).
 
-Language rule (contract amendment H1): normative content is written in **English
-only**. All canonical protocol identifiers — event types, field names, enum values,
-state names — are English and enter the ledger only in canonical form. Localized
-documentation (e.g. `README.pt-BR.md`) is display-layer only and is never a second
+Language rule (contract amendment H1): what is English-only is the **canonical
+protocol vocabulary** — event types, field names, enum values, state names. Those
+are stable, appear in English throughout the contract, and enter the ledger only in
+canonical form; an identifier is never translated by locale. **Normative prose is a
+separate question**: the Execution Contract's own prose is Portuguese by design, and
+that does not make it less normative — it is the supreme source. Documentation, CLI
+and interfaces may be localized in the **display layer** (`approved` MAY be shown as
+"aprovado"), and a localized document (e.g. `README.pt-BR.md`) is never a second
 source of truth.
 
 ## 3. Non-Negotiable Invariants

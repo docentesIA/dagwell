@@ -25,9 +25,17 @@ its explicit versioned human-gated process.
 | Document | Role | SHA-256 |
 |---|---|---|
 | `docs/contracts/DAGWELL-EXECUTION-CONTRACT-v1.0.md` | promoted, normative (supreme) | `bd1552a9f7f6aa9f03b78c6fbd46f8526f642ebced7aacec654066bcd29e623a` |
-| `AGENTS.md` | ratified canonical agent instructions | `54c4ab7c1483038149afe07fc636c539dcf73fc59651c1f7a5e2019eacc55feb` |
+| `AGENTS.md` | ratified canonical agent instructions — **hash as ratified, 2026-08-23** | `54c4ab7c1483038149afe07fc636c539dcf73fc59651c1f7a5e2019eacc55feb` |
 | `CLAUDE.md` | thin Claude Code bridge | `b1e599e43a3182f5cd22845d1b2251c558b7e9ae3ac31e0cd4d1347380a3b1d6` |
 | `docs/architecture/DAGWELL-ARCHITECTURE-MIGRATION-PLAN-v1.md` | approved plan (explanation/planning, non-normative) | `11af09daa4b19e90e07d3782877f6bb8545808d14b3cd5cde481665896d94784` |
+
+The contract's hash is **fixed**: a promoted document is immutable and any copy in
+the repository must match it (`tools/check_contracts.py` enforces this). `AGENTS.md`
+is different — it is amendable by human gate, so the value above is its identity **at
+ratification**, not a claim about the working tree. Amendments are recorded as ADRs
+(§11 by ADR-0006; the language rule by ADR-0007); the current identity is derivable
+with `sha256sum AGENTS.md` and is deliberately not restated here, because a derived
+value copied into a static document drifts and then lies.
 
 ## Also recorded
 

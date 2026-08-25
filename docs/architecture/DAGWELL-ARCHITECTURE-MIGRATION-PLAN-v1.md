@@ -24,8 +24,10 @@ Precedence (higher prevails; this Plan reinterprets none of them):
 
 1. **DAGWELL Execution Contract v1.0 (Stable)** — SHA-256
    `bd1552a9f7f6aa9f03b78c6fbd46f8526f642ebced7aacec654066bcd29e623a`
-2. **AGENTS.md (ratified)** — SHA-256
-   `54c4ab7c1483038149afe07fc636c539dcf73fc59651c1f7a5e2019eacc55feb`
+2. **AGENTS.md (ratified)** — SHA-256 at ratification (2026-08-23)
+   `54c4ab7c1483038149afe07fc636c539dcf73fc59651c1f7a5e2019eacc55feb`.
+   Amendable by human gate; amendments are recorded as ADRs and the current
+   identity is derivable (`sha256sum AGENTS.md`), never restated here.
 3. **Repository Structure Proposal v1 — APPROVED** (final human gate passed after
    patches P1–P4). Structure decisions are settled and are not reopened here.
 4. This Plan.
