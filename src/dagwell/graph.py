@@ -112,6 +112,24 @@ def _validate_node(node: dict) -> None:
             raise GraphValidationError(
                 f"node {nid}: no_verification and non-empty verifications "
                 "are mutually exclusive")
+        # Fail-closed while §13.17 is open (contract: "este contrato fixa só o
+        # conceito, a identidade canônica e o fail-closed"). An unverified node
+        # rests entirely on the core's own validation of the returned evidence.
+        # The contract defines what makes evidence INVALID only for `artifact`
+        # (manifest absent, empty or malformed); for the other types the format
+        # belongs to the future Adapter/Output Evidence Specification, so the
+        # core cannot tell a receipt from a sentence. Declaring no_verification
+        # over one of those types means nothing checks the claim — neither a
+        # verifier nor the core. That is not a vacuum a human can sign for yet.
+        # No encoding is invented here and none is required: the restriction
+        # lifts by itself when §13.17 fixes the formats. See ADR-0008.
+        if evidence_type != "artifact":
+            raise GraphValidationError(
+                f"node {nid}: no_verification is not available for evidence "
+                f"type {evidence_type!r} while §13.17 is open — the core cannot "
+                "validate that type on its own, so an unverified node would "
+                "complete on an unchecked claim. Declare a verification "
+                "(I5, I28, §4 fail-closed)")
         return
     if not isinstance(verifications, list) or not verifications:
         raise GraphValidationError(

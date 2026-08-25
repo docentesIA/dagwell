@@ -12,7 +12,7 @@ from pathlib import Path
 from dagwell import human, ids, operations, runtime, snapshots
 from dagwell.checkpoint import CheckpointRefused, operational_checkpoint
 from dagwell.fold import fold
-from dagwell.graph import load_graph
+from dagwell.graph import GraphValidationError, load_graph
 from dagwell.ledger import Ledger, LedgerIntegrityError, SCHEMA_VERSION, occurred_now
 from dagwell.ledger import events as ev_mod
 from dagwell.operations import OperationRefused
@@ -398,14 +398,38 @@ def test_healthy_run_still_completes_end_to_end():
         operations.dispatch(s.led, s.graph, s.rid, "b")
         operations.record_return(s.led, s.graph, s.rid, "b", attempt=1,
                                  exit_code=0,
-                                 output_evidence={"type": "structured_value",
-                                                  "evidence_id": EVID})
+                                 output_evidence={"type": "artifact",
+                                                  "evidence_id": EVID,
+                                                  "output_manifest": [
+                                                      {"name": "o.md",
+                                                       "artifact_digest": EVID}]})
         assert fold(s.graph, s.led.run(s.rid), s.rid)["run_state"] == "completed"
     with tempfile.TemporaryDirectory() as tmp:
         s = S(tmp)
         s.dispatch()
         human.cancel_run(s.led, s.graph, s.rid, actor="rey")
         assert fold(s.graph, s.led.run(s.rid), s.rid)["run_state"] == "cancelled"
+
+
+def test_unverifiable_evidence_type_cannot_be_left_unverified():
+    """I5/I28, §4 fail-closed — the fourth audit finding. A node whose evidence
+    type §13.17 has not specified CANNOT also waive verification: the core
+    cannot tell a receipt from a sentence, so nothing would check the claim and
+    `completed` would rest on a string. `artifact` keeps the signed vacuum,
+    because the contract does define what makes an artifact invalid."""
+    def graph_with(evidence, node):
+        return json.dumps({"graph_id": "g", "nodes": [
+            {"id": "n", "deps": [], "output_evidence": evidence, **node}]})
+
+    for evidence in ("structured_value", "remote_receipt", "side_effect_receipt"):
+        _expect(GraphValidationError, load_graph,
+                graph_with(evidence, {"no_verification": "trust me"}))
+        # the same type IS legal once something actually checks it
+        load_graph(graph_with(evidence, {"verifications": [
+            {"verification_id": "v", "family": "deterministic"}]}))
+
+    # artifact is unchanged: the core validates it, so the vacuum stays signable
+    load_graph(graph_with("artifact", {"no_verification": "leaf output"}))
 
 
 if __name__ == "__main__":

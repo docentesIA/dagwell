@@ -43,9 +43,9 @@ EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 TWO_NODE_GRAPH = json.dumps({
     "graph_id": "two",
     "nodes": [
-        {"id": "x", "deps": [], "output_evidence": "structured_value",
+        {"id": "x", "deps": [], "output_evidence": "artifact",
          "no_verification": "leaf"},
-        {"id": "y", "deps": [], "output_evidence": "structured_value",
+        {"id": "y", "deps": [], "output_evidence": "artifact",
          "no_verification": "leaf"},
     ],
 })
@@ -357,7 +357,7 @@ def test_T15_raw_text_and_frozen_snapshot_parse_to_the_same_graph():
     composed = unicodedata.normalize("NFC", decomposed)
     assert composed != decomposed
     text = json.dumps({"graph_id": "acentos", "nodes": [
-        {"id": decomposed, "deps": [], "output_evidence": "structured_value",
+        {"id": decomposed, "deps": [], "output_evidence": "artifact",
          "no_verification": "leaf"}]}, ensure_ascii=False)
 
     from_raw = load_graph(text)
@@ -420,9 +420,9 @@ def test_T17_shipped_schema_is_in_parity_with_the_authoritative_validator():
     validate_graph(json.loads(EXAMPLES.joinpath("graph-canonical.json")
                               .read_text(encoding="utf-8")))
     _expect(GraphValidationError, validate_graph, {"graph_id": "c", "nodes": [
-        {"id": "x", "deps": ["y"], "output_evidence": "structured_value",
+        {"id": "x", "deps": ["y"], "output_evidence": "artifact",
          "no_verification": "leaf"},
-        {"id": "y", "deps": ["x"], "output_evidence": "structured_value",
+        {"id": "y", "deps": ["x"], "output_evidence": "artifact",
          "no_verification": "leaf"}]})
 
 
@@ -434,7 +434,10 @@ def test_T18_the_canonical_example_graph_loads_and_freezes_an_identity():
     assert graph["graph_id"] == "canonical-example"
     assert set(graph["nodes"]) == {"draft", "publish", "summary"}
     assert graph["graph_version"] == canonical.content_digest(text)
-    assert graph["nodes"]["summary"]["no_verification"]          # signed vacuum
+    # `summary` returns structured_value, a type whose format §13.17 has not
+    # fixed, so it must declare a verification: the core cannot validate that
+    # type alone and an unverified node would rest on an unchecked claim.
+    assert graph["nodes"]["summary"]["verifications"]
     assert [v["family"] for v in graph["nodes"]["draft"]["verifications"]] \
         == ["deterministic", "human"]                            # machines first
 

@@ -16,7 +16,7 @@ def _g(**over):
              "verifications": [
                  {"verification_id": "lint", "family": "deterministic"},
                  {"verification_id": "gate", "family": "human"}]},
-            {"id": "b", "deps": ["a"], "output_evidence": "structured_value",
+            {"id": "b", "deps": ["a"], "output_evidence": "artifact",
              "no_verification": "read-only summary, checked downstream"},
         ],
     }

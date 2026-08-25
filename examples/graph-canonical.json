@@ -6,23 +6,41 @@
       "deps": [],
       "output_evidence": "artifact",
       "verifications": [
-        {"verification_id": "lint", "family": "deterministic"},
-        {"verification_id": "final-gate", "family": "human"}
+        {
+          "verification_id": "lint",
+          "family": "deterministic"
+        },
+        {
+          "verification_id": "final-gate",
+          "family": "human"
+        }
       ]
     },
     {
       "id": "publish",
-      "deps": ["draft"],
+      "deps": [
+        "draft"
+      ],
       "output_evidence": "side_effect_receipt",
       "verifications": [
-        {"verification_id": "receipt-check", "family": "deterministic"}
+        {
+          "verification_id": "receipt-check",
+          "family": "deterministic"
+        }
       ]
     },
     {
       "id": "summary",
-      "deps": ["publish"],
+      "deps": [
+        "publish"
+      ],
       "output_evidence": "structured_value",
-      "no_verification": "aggregation of already-verified upstream nodes"
+      "verifications": [
+        {
+          "verification_id": "summary-review",
+          "family": "human"
+        }
+      ]
     }
   ]
 }

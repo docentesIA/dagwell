@@ -17,7 +17,7 @@ GRAPH_TEXT = json.dumps({
          "verifications": [
              {"verification_id": "lint", "family": "deterministic"},
              {"verification_id": "gate", "family": "human"}]},
-        {"id": "b", "deps": ["a"], "output_evidence": "structured_value",
+        {"id": "b", "deps": ["a"], "output_evidence": "artifact",
          "no_verification": "summary node, verified downstream"},
     ],
 })
@@ -47,12 +47,10 @@ class S:
         return self.ev("node_dispatched", node_id=node, attempt=attempt)
 
     def ret(self, node="a", attempt=1, exit_code=0, evidence="ok"):
-        if evidence == "ok" and node == "a":
+        if evidence == "ok":
             payload = {"type": "artifact", "evidence_id": EVID,
                        "output_manifest": [{"name": "o.md",
                                             "artifact_digest": EVID}]}
-        elif evidence == "ok":
-            payload = {"type": "structured_value", "evidence_id": EVID}
         elif evidence is None:
             payload = None
         else:

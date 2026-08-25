@@ -51,7 +51,9 @@ def test_chain_b_evidence_to_completed():
         s.dispatch(node="b")
         runtime.record_return(
             s.led, s.graph, s.rid, "b", 1, exit_code=0,
-            output_evidence={"type": "structured_value", "evidence_id": EVID})
+            output_evidence={"type": "artifact", "evidence_id": EVID,
+                             "output_manifest": [{"name": "o.md",
+                                                  "artifact_digest": EVID}]})
         f = s.fold()
         assert f["nodes"]["b"]["state"] == "completed"   # declared vacuum
         assert f["run_state"] == "completed"
