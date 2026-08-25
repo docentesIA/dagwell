@@ -32,6 +32,32 @@ protocol identifiers — event types, fields, enums, states — are English
 (contract amendment H1). Localized documentation is informational only; the
 English/canonical originals govern.
 
+## How this was built, and how it was checked
+
+This code was written by AI agents under a human gate, and the commit trailers say
+so. That is stated here rather than left to be discovered, because a project about
+governing agent work has no business being vague about how it was produced.
+
+What makes it checkable is not who typed it:
+
+- The **normative contract came first**. `docs/contracts/` holds a promoted document
+  pinned by SHA-256 and verified on every push; the implementation follows its
+  incremental order and never edits it in place.
+- **Two independent audits**, by models from different families than the one that
+  wrote the core — the project's own rule that a verifier must not share the
+  producer's family. Both returned REWORK REQUIRED.
+- **Every finding was reproduced** in the interpreter before being acted on. Two
+  claims did not survive reproduction and were discarded — one from each auditor.
+- **The suite reports 142 cases across 12 files, 47 of them adversarial** (the
+  T1-T22 matrix plus the hardening coverage), each written to fail if a specific
+  hole reopens. Stdlib only, no network, no quota: `python3 tools/run_tests.py`
+  prints the same counts for anyone who runs it.
+- **The findings that were NOT fixed are written into the commit messages**, not
+  omitted. Two remain open and are tracked as issues.
+
+None of that makes the code correct. It makes the claims about it checkable, which
+is the most any repository can honestly offer.
+
 ## License
 
 Copyright 2026 Reinaldo Elias.

@@ -33,6 +33,32 @@ implementação, e o código cresce em fases incrementais com portões.
 | Checagem de integridade dos contratos | `python3 tools/check_contracts.py` |
 | Suíte de testes de custo zero | `python3 tools/run_tests.py` |
 
+## Como isto foi feito, e como foi conferido
+
+Este código foi escrito por agentes de IA sob gate humano, e os rodapés dos commits
+dizem isso. Está declarado aqui em vez de ficar para ser descoberto: um projeto sobre
+governar trabalho de agentes não tem por que ser vago sobre a própria produção.
+
+O que o torna conferível não é quem digitou:
+
+- O **contrato normativo veio antes**. `docs/contracts/` guarda um documento promovido,
+  travado por SHA-256 e verificado a cada push; a implementação segue a ordem
+  incremental dele e nunca o edita no lugar.
+- **Duas auditorias independentes**, por modelos de famílias diferentes da que escreveu
+  o core — a regra do próprio projeto de que o verificador não pode ser da mesma família
+  do produtor. As duas devolveram REWORK REQUIRED.
+- **Cada achado foi reproduzido** no interpretador antes de virar correção. Duas
+  afirmações não sobreviveram à reprodução e foram descartadas — uma de cada auditor.
+- **A suíte reporta 142 casos em 12 arquivos, 47 deles adversariais** (a matriz
+  T1–T22 mais a cobertura de hardening), cada um escrito para falhar se um buraco
+  específico reabrir. Só biblioteca padrão, sem rede, sem cota:
+  `python3 tools/run_tests.py` imprime as mesmas contagens para quem rodar.
+- **Os achados que NÃO foram corrigidos estão escritos nas mensagens de commit**, não
+  omitidos. Dois seguem abertos e são acompanhados como issues.
+
+Nada disso torna o código correto. Torna as afirmações sobre ele conferíveis, que é o
+máximo que um repositório pode honestamente oferecer.
+
 ## Licença
 
 Copyright 2026 Reinaldo Elias.
