@@ -223,7 +223,124 @@ identidade congelada no `start`. Um grafo diferente é recusado, não aceito em
 silêncio. O snapshot do grafo congelado fica ao lado do ledger, então o resume
 funciona mesmo se você perdeu o arquivo original.
 
-## 5. Referência de comandos
+## 5. Amarrando aos CLIs de verdade
+
+Esta é a pergunta que todo mundo faz depois de instalar: **como o DAGWELL chama o
+claude, o codex, o grok?**
+
+Ele não chama. E não é omissão deste manual — é o estado do projeto. Adapters são o
+marco seguinte. O que existe hoje é o modelo inverso, e ele já é útil:
+
+> **Você chama o CLI. O DAGWELL decide se podia, registra o que voltou, e recusa dar
+> por concluído o que não tem prova.**
+
+É o mesmo desenho de um `despachar.sh`: quem executa é o seu script; quem governa é o
+ledger. A diferença é que aqui a governança é o produto, não um efeito colateral.
+
+### 5.1 Declare o comando no próprio grafo
+
+O motor **ignora campos que não conhece**, e isso é útil: dá para o nó carregar o
+comando que o executa. Por convenção, prefixe com `x_`:
+
+```json
+{
+  "id": "roteiro",
+  "deps": [],
+  "output_evidence": "artifact",
+  "verifications": [{"verification_id": "tem-fontes", "family": "deterministic"}],
+  "x_harness": "claude",
+  "x_command": "claude -p \"Escreva o roteiro a partir de briefing.md. Grave em $OUT.\""
+}
+```
+
+Esses campos entram no hash do grafo — **mudar o comando muda a identidade do run**,
+que é o comportamento correto: é outro trabalho. Exemplo completo em
+[`examples/graph-with-commands.json`](../examples/graph-with-commands.json).
+
+### 5.2 O laço
+
+[`examples/runner.sh`](../examples/runner.sh) é o laço inteiro em ~110 linhas de
+shell, feito para você copiar e adaptar:
+
+```bash
+./examples/runner.sh run.jsonl graph.json "$RUN" out
+```
+
+O que ele faz, e por que cada parte importa:
+
+1. `dagwell ready` — pergunta o que a topologia liberou. Nunca decide isso sozinho.
+2. `dagwell dispatch` — registra que o nó **foi entregue**, antes de qualquer coisa
+   acontecer. Se a máquina cair aqui, o ledger sabe que havia trabalho em voo.
+3. Roda o `x_command` **num subshell**, com `$OUT` exportado apontando para o arquivo
+   que aquele nó deve produzir.
+4. `dagwell return` — registra o código de saída e o **digest do que foi realmente
+   escrito**. Não o que o comando disse ter feito: o que está no disco.
+5. Verificações de máquina, na ordem do contrato, cada uma com seu veredito.
+6. Gate humano: o laço **abre** a verificação e **para**. Abrir não é decidir.
+
+### 5.3 O caso que justifica tudo isso
+
+```bash
+x_command: "echo 'pronto, gerei o arquivo' && exit 0"
+```
+
+O comando afirma ter feito o trabalho e sai com código zero. Nenhum arquivo aparece.
+
+```
+-> gera (attempt 1)
+   exit 0, no usable output -> recording the failure
+   gera is now: failed
+```
+
+**`failed`.** Não `completed`. Esse é o modo de falha caro de qualquer orquestração de
+agentes — o agente que relata sucesso sem produzir — e é pego por evidência, não por
+confiança. Um orquestrador que só olha o código de saída teria marcado sucesso.
+
+### 5.4 Invocações headless
+
+Um agente interativo trava esperando terminal. Estas são as formas não-interativas
+verificadas:
+
+| CLI | Invocação |
+|---|---|
+| claude | `claude -p "<missão>"` |
+| codex | `codex exec --sandbox workspace-write "<missão>"` |
+| grok | `grok -p "<missão>" --output-format plain --always-approve --max-turns 25` |
+| shell/make | qualquer comando; o `$OUT` é o contrato |
+
+Para os demais (kimi, agy, muse e afins), confira a flag headless no `--help` de cada
+um antes de pôr no grafo — o padrão é sempre o mesmo: modo não-interativo, missão como
+argumento, e o arquivo em `$OUT` como prova.
+
+### 5.5 Custo
+
+O DAGWELL não gasta nada. **Seu `x_command` gasta.** Cada nó despachado é uma chamada
+paga ou uma cota consumida, e o motor não tem modelo de orçamento — a §13.12 está
+aberta e nenhuma fórmula foi inventada.
+
+Consequências práticas:
+
+- Rode `dagwell ready` antes do runner para ver **quantos** nós vão disparar.
+- Um grafo com 10 nós são 10 chamadas, e uma retentativa é mais uma.
+- `dagwell land --reason budget_exhausted` existe justamente para parar sem truncar
+  trabalho: o que estava em voo continua registrado, e o `resume` retoma do ponto.
+
+### 5.6 Onde isso se encaixa no que você já faz
+
+O padrão vale para qualquer pipeline em que passos dependem uns dos outros e alguém
+precisa aprovar antes do resultado sair:
+
+| Pipeline | Nós típicos |
+|---|---|
+| Vídeo (HyperFrames) | roteiro → composição → render → aprovação humana |
+| Site | pesquisa → copy → build → verificador determinístico → gate |
+| Animação | storyboard → keyframes → render → revisão |
+
+Em todos, o ganho é o mesmo: **um nó não avança porque o comando disse que deu certo,
+e sim porque a evidência está lá e a verificação passou.** O que muda de um para o
+outro é só o `x_command`.
+
+## 6. Referência de comandos
 
 | Comando | O que faz |
 |---|---|
@@ -243,7 +360,7 @@ funciona mesmo se você perdeu o arquivo original.
 
 Todos os comandos, menos `demo` e `start`, recebem `--ledger`, `--graph` e `--run`.
 
-## 6. Lendo um status
+## 7. Lendo um status
 
 Estados de nó:
 
@@ -272,7 +389,7 @@ guarda os erros como dado histórico.
 — um buraco no `seq`, ou nenhum `run_created` autoritativo. O run continua
 **legível**, mas toda mutação é recusada até um humano reconciliar.
 
-## 7. Quando algo é recusado
+## 8. Quando algo é recusado
 
 Recusa é o produto funcionando, não falhando. Aparece como `refused: <motivo>` e sai
 com código diferente de zero. As mais comuns:
@@ -290,7 +407,7 @@ com código diferente de zero. As mais comuns:
 Nada disso se força com uma flag. Se a recusa está errada, quem está errado é o grafo
 ou o ledger — conserte isso, não o guarda.
 
-## 8. O que fica em disco
+## 9. O que fica em disco
 
 | Caminho | O quê |
 |---|---|
@@ -305,7 +422,7 @@ adulteração.
 Os dois caminhos são seus — versione, faça backup ou mantenha privado, conforme o
 trabalho exigir.
 
-## 9. Usando a biblioteca em vez do CLI
+## 10. Usando a biblioteca em vez do CLI
 
 Tudo acima existe como API Python, e algumas coisas só existem lá
 (`observe_orphans`, `advance_verifications`, `extend_budget`). O início rápido do

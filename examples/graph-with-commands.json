@@ -1,0 +1,36 @@
+{
+  "graph_id": "video-pipeline",
+  "nodes": [
+    {
+      "id": "roteiro",
+      "deps": [],
+      "output_evidence": "artifact",
+      "verifications": [
+        {"verification_id": "tem-fontes", "family": "deterministic"}
+      ],
+      "x_harness": "claude",
+      "x_command": "claude -p \"Escreva o roteiro do vídeo a partir de briefing.md. Grave em $OUT. Toda afirmação factual precisa de fonte.\""
+    },
+    {
+      "id": "composicao",
+      "deps": ["roteiro"],
+      "output_evidence": "artifact",
+      "verifications": [
+        {"verification_id": "html-valido", "family": "deterministic"}
+      ],
+      "x_harness": "codex",
+      "x_command": "codex exec --sandbox workspace-write \"Monte a composição HyperFrames a partir do roteiro em out/roteiro.out. Grave o HTML em $OUT.\""
+    },
+    {
+      "id": "render",
+      "deps": ["composicao"],
+      "output_evidence": "artifact",
+      "verifications": [
+        {"verification_id": "arquivo-reproduz", "family": "deterministic"},
+        {"verification_id": "aprovacao-final", "family": "human"}
+      ],
+      "x_harness": "shell",
+      "x_command": "hyperframes render out/composicao.out --output $OUT"
+    }
+  ]
+}

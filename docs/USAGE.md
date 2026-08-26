@@ -221,7 +221,127 @@ the identity frozen at `start`. A different graph is refused rather than silentl
 accepted. The frozen graph snapshot is stored beside the ledger, so resume works
 even if you lost the original file.
 
-## 5. Command reference
+## 5. Binding it to real CLIs
+
+This is the question everyone asks after installing: **how does DAGWELL call claude,
+codex, grok?**
+
+It does not. That is not an omission in this manual — it is the state of the project.
+Adapters are the next milestone. What exists today is the inverse model, and it is
+already useful:
+
+> **You call the CLI. DAGWELL decides whether you could, records what came back, and
+> refuses to call finished anything that has no proof.**
+
+It is the same shape as a dispatch script: your script executes, the ledger governs.
+The difference is that here the governance is the product, not a side effect.
+
+### 5.1 Declare the command in the graph itself
+
+The engine **ignores fields it does not know**, which is useful: a node can carry the
+command that executes it. By convention, prefix them with `x_`:
+
+```json
+{
+  "id": "script",
+  "deps": [],
+  "output_evidence": "artifact",
+  "verifications": [{"verification_id": "has-sources", "family": "deterministic"}],
+  "x_harness": "claude",
+  "x_command": "claude -p \"Write the script from briefing.md. Write it to $OUT.\""
+}
+```
+
+Those fields go into the graph hash — **changing the command changes the run's
+identity**, which is correct: it is different work. Full example in
+[`examples/graph-with-commands.json`](../examples/graph-with-commands.json).
+
+### 5.2 The loop
+
+[`examples/runner.sh`](../examples/runner.sh) is the whole loop in ~110 lines of
+shell, meant to be copied and adapted:
+
+```bash
+./examples/runner.sh run.jsonl graph.json "$RUN" out
+```
+
+What it does, and why each step matters:
+
+1. `dagwell ready` — asks what the topology released. It never decides that itself.
+2. `dagwell dispatch` — records that the node **was handed out**, before anything
+   happens. If the machine dies here, the ledger knows work was in flight.
+3. Runs `x_command` **in a subshell**, with `$OUT` exported, pointing at the file
+   that node must produce.
+4. `dagwell return` — records the exit code and the **digest of what was actually
+   written**. Not what the command claimed: what is on disk.
+5. Machine verifications, in contract order, each with its verdict.
+6. Human gate: the loop **opens** the verification and **stops**. Opening is not
+   deciding.
+
+### 5.3 The case that justifies all of it
+
+```bash
+x_command: "echo 'done, file generated' && exit 0"
+```
+
+The command claims the work is done and exits zero. No file appears.
+
+```
+-> gera (attempt 1)
+   exit 0, no usable output -> recording the failure
+   gera is now: failed
+```
+
+**`failed`.** Not `completed`. That is the expensive failure mode of any agent
+orchestration — the agent reporting success without producing — and it is caught by
+evidence, not by trust. An orchestrator that only checks exit codes would have
+recorded success.
+
+### 5.4 Headless invocations
+
+An interactive agent hangs waiting for a terminal. These are the verified
+non-interactive forms:
+
+| CLI | Invocation |
+|---|---|
+| claude | `claude -p "<mission>"` |
+| codex | `codex exec --sandbox workspace-write "<mission>"` |
+| grok | `grok -p "<mission>" --output-format plain --always-approve --max-turns 25` |
+| shell/make | any command; `$OUT` is the contract |
+
+For the others, check each one's `--help` for its headless flag before putting it in
+a graph — the pattern is always the same: non-interactive mode, mission as argument,
+and the file at `$OUT` as the proof.
+
+### 5.5 Cost
+
+DAGWELL spends nothing. **Your `x_command` spends.** Every dispatched node is a paid
+call or a consumed quota, and the engine owns no budget model — §13.12 is open and no
+formula was invented.
+
+In practice:
+
+- Run `dagwell ready` before the runner to see **how many** nodes will fire.
+- A 10-node graph is 10 calls, and a retry is one more.
+- `dagwell land --reason budget_exhausted` exists precisely to stop without
+  truncating work: what was in flight stays recorded, and `resume` picks it up.
+
+### 5.6 Where this fits
+
+The pattern holds for any pipeline where steps depend on each other and someone must
+approve before the result ships:
+
+| Pipeline | Typical nodes |
+|---|---|
+| Video | script → composition → render → human approval |
+| Website | research → copy → build → deterministic checker → gate |
+| Animation | storyboard → keyframes → render → review |
+
+In all of them the gain is the same: **a node does not advance because the command
+said it worked, but because the evidence is there and the verification passed.** What
+changes between them is only the `x_command`.
+
+## 6. Command reference
 
 | Command | What it does |
 |---|---|
@@ -241,7 +361,7 @@ even if you lost the original file.
 
 Every command except `demo` and `start` takes `--ledger`, `--graph` and `--run`.
 
-## 6. Reading a status
+## 7. Reading a status
 
 Node states:
 
@@ -270,7 +390,7 @@ ledger keeps mistakes as historical data.
 in `seq`, or no authoritative `run_created`. The run stays **readable** but every
 mutation is refused until a human reconciles it.
 
-## 7. When something is refused
+## 8. When something is refused
 
 Refusals are the product working, not failing. They print as `refused: <reason>`
 and exit nonzero. The common ones:
@@ -288,7 +408,7 @@ and exit nonzero. The common ones:
 Nothing here can be forced with a flag. If a refusal is wrong, the graph or the
 ledger is wrong — fix that, not the guard.
 
-## 8. What lands on disk
+## 9. What lands on disk
 
 | Path | What |
 |---|---|
@@ -302,7 +422,7 @@ from events, so tampering with a cache changes nothing except the tamper evidenc
 Both paths are yours — commit them, back them up, or keep them private, as the work
 demands.
 
-## 9. Using the library instead
+## 10. Using the library instead
 
 Everything above is available as a Python API, and some things only exist there
 (`observe_orphans`, `advance_verifications`, `extend_budget`). The README's
