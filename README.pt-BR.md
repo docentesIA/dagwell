@@ -134,6 +134,37 @@ dagwell status --ledger run.jsonl --graph graph.json --run <the run id printed a
 | Checagem de integridade dos contratos | `python3 tools/check_contracts.py` |
 | Suíte de testes de custo zero | `python3 tools/run_tests.py` |
 
+## O nome
+
+**O demônio de Maxwell** — e o motivo pelo qual ele falha.
+
+O demônio é um experimento mental: um agente que observa moléculas, usa
+**informação** para separar as rápidas das lentas e reduz a **entropia** de um gás,
+pagando um custo energético por bit adquirido (Landauer). Não é uma metáfora
+escolhida por soar bem. É o **mesmo problema formal**, com as mesmas grandezas:
+
+| Demônio de Maxwell | Orquestrador de agentes |
+|---|---|
+| observa moléculas | observa o estado da tarefa |
+| usa informação para separar rápidas de lentas | usa informação para rotear ao agente certo |
+| reduz a entropia do gás | reduz a incerteza sobre o artefato |
+| paga energia por bit (Landauer) | paga tokens por bit de incerteza removida |
+| o limite é termodinâmico | o limite é o orçamento |
+
+E a lição do demônio é o ponto inteiro: **o demônio só funciona se de fato medir.**
+Um demônio que separa moléculas sem observá-las não reduz entropia nenhuma — apenas
+gasta energia.
+
+Isso é o `executed != completed`, enunciado pela física um século antes de alguém
+despachar um agente. Um passo que rodou, saiu com código zero e nunca foi verificado
+é um demônio que separou sem olhar: tokens gastos, incerteza intacta. O protocolo
+inteiro existe para recusar chamar aquilo de concluído.
+
+O antecessor se chamava **Maxwell**. Este motor mantém o `well` e troca `MAX` por
+**DAG** — o grafo dirigido acíclico que virou a estrutura sobre a qual tudo se
+apoia. O demônio ficou; o que mudou é que o trabalho dele agora é um grafo, e o que
+ele mede está escrito onde qualquer um confere.
+
 ## Como isto foi feito, e como foi conferido
 
 Este código foi escrito por agentes de IA sob gate humano, e os rodapés dos commits

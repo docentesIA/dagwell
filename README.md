@@ -135,6 +135,37 @@ protocol identifiers — event types, fields, enums, states — are English
 (contract amendment H1). Localized documentation is informational only; the
 English/canonical originals govern.
 
+## The name
+
+**Maxwell's demon**, and the reason it fails.
+
+The demon is a thought experiment: an agent that watches molecules, uses
+**information** to sort the fast ones from the slow, and lowers the entropy of a gas
+— paying an energy cost per bit acquired (Landauer). It is not a metaphor picked for
+sound. It is the same formal problem, with the same quantities:
+
+| Maxwell's demon | An agent orchestrator |
+|---|---|
+| watches molecules | watches the state of the task |
+| uses information to sort fast from slow | uses information to route to the right agent |
+| lowers the entropy of the gas | lowers the uncertainty about the artifact |
+| pays energy per bit (Landauer) | pays tokens per bit of uncertainty removed |
+| the limit is thermodynamic | the limit is the budget |
+
+And the demon's lesson is the whole point: **the demon only works if it actually
+measures.** A demon that sorts molecules without observing them lowers no entropy at
+all — it just burns energy.
+
+That is `executed != completed`, stated in physics a century before anyone dispatched
+an agent. A step that ran, exited zero and was never verified is a demon that sorted
+without looking: tokens spent, uncertainty unchanged. The whole protocol exists to
+refuse calling that finished.
+
+The predecessor was called **Maxwell**. This engine keeps the `well` and replaces
+`MAX` with **DAG** — the directed acyclic graph that became the structure the whole
+thing is built on. The demon stayed; what changed is that its work is now a graph,
+and what it measures is written down where anyone can check.
+
 ## How this was built, and how it was checked
 
 This code was written by AI agents under a human gate, and the commit trailers say
