@@ -31,6 +31,24 @@ def content_digest(data: bytes | str) -> str:
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def json_canonical(value) -> str:
+    """Canonical JSON text of a value (Adapter/Output Evidence Spec §4.1).
+
+    UTF-8, lexicographically ordered keys, no insignificant whitespace,
+    minimal number form; NaN/Infinity refused (fail closed) — they have no
+    JSON form and would otherwise serialize into unparseable text.
+    """
+    import json
+    return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False, allow_nan=False)
+
+
+def json_digest(value) -> str:
+    """sha256:<hex> of the canonical JSON bytes — the uniform evidence_id."""
+    canonical = json_canonical(value)
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def graph_version(graph_text: bytes | str) -> str:
     """Identity of one executable graph definition document.
 

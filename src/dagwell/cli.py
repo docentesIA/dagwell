@@ -19,7 +19,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from dagwell import __version__, human, operations, runtime
+from dagwell import __version__, canonical, human, operations, runtime
 from dagwell.fold import fold
 from dagwell.graph import load_graph
 from dagwell.ledger import Ledger
@@ -67,6 +67,8 @@ def _demo():
         {"id": "write-report", "deps": [], "output_evidence": "artifact",
          "verifications": [{"verification_id": "review", "family": "human"}]}]})
     digest = "sha256:" + "ab" * 32
+    manifest = [{"path": "report.md", "artifact_digest": digest,
+                 "size_bytes": 2}]
     with tempfile.TemporaryDirectory() as tmp:
         ledger = Ledger(Path(tmp) / "run.jsonl")
         graph, founding = runtime.start_run(
@@ -81,9 +83,9 @@ def _demo():
 
         operations.record_return(
             ledger, graph, rid, "write-report", attempt=1, exit_code=0,
-            output_evidence={"type": "artifact", "evidence_id": digest,
-                             "output_manifest": [{"name": "report.md",
-                                                  "artifact_digest": digest}]})
+            output_evidence={"type": "artifact",
+                             "evidence_id": canonical.json_digest(manifest),
+                             "output_manifest": manifest})
         state = fold(graph, ledger.run(rid), rid)["nodes"]["write-report"]["state"]
         print(f"3. recorded a successful return with evidence -> {state}")
         print("   exit code 0 AND evidence present, and it is still not completed")

@@ -1,0 +1,33 @@
+{
+  "registry_version": 1,
+  "bindings": [
+    {
+      "binding_id": "claude-cli",
+      "transport": "subprocess",
+      "platform": "claude",
+      "invocation": "claude -p {mission}",
+      "probe": "claude --version",
+      "timeout_seconds": 3600,
+      "models": [
+        {"model_id": "haiku", "family": "anthropic-claude",
+         "tiers": ["trivial", "simple"], "relative_cost": 1},
+        {"model_id": "sonnet", "family": "anthropic-claude",
+         "tiers": ["standard"], "relative_cost": 5},
+        {"model_id": "opus", "family": "anthropic-claude",
+         "tiers": ["complex", "frontier"], "relative_cost": 25}
+      ]
+    },
+    {
+      "binding_id": "codex-cli",
+      "transport": "subprocess",
+      "platform": "codex",
+      "invocation": "codex exec --sandbox workspace-write {mission}",
+      "probe": "codex --version",
+      "timeout_seconds": 3600,
+      "models": [
+        {"model_id": "default", "family": "openai-gpt",
+         "tiers": ["standard", "complex"], "relative_cost": 5}
+      ]
+    }
+  ]
+}

@@ -7,8 +7,11 @@ from dagwell import ids, verification as vf
 from dagwell.fold import fold
 from dagwell.graph import load_graph
 from dagwell.ledger import Ledger, SCHEMA_VERSION, create_run, occurred_now
+from helpers import artifact_evidence
 
-EVID = "sha256:" + "ab" * 32
+# The scenario's one valid evidence payload; EVID is its DERIVED id
+# (spec v1.0 §4.1) — verification requests and verdicts bind to it.
+EVID = artifact_evidence()["evidence_id"]
 
 GRAPH_TEXT = json.dumps({
     "graph_id": "demo",
@@ -48,9 +51,7 @@ class S:
 
     def ret(self, node="a", attempt=1, exit_code=0, evidence="ok"):
         if evidence == "ok":
-            payload = {"type": "artifact", "evidence_id": EVID,
-                       "output_manifest": [{"name": "o.md",
-                                            "artifact_digest": EVID}]}
+            payload = artifact_evidence()
         elif evidence is None:
             payload = None
         else:

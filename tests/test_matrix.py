@@ -34,9 +34,11 @@ from dagwell.ledger import (
 )
 from dagwell.ledger.events import _MODEL_FAMILY_RE, valid_family
 from dagwell.operations import OperationRefused
+from helpers import FILE_DIGEST, artifact_evidence
 from tests_scenario import AGENDA, EVID, GRAPH_TEXT, S
 
-EVID2 = "sha256:" + "cd" * 32
+FILE_DIGEST2 = "sha256:" + "cd" * 32
+EVID2 = artifact_evidence(digest=FILE_DIGEST2)["evidence_id"]
 EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
 
 # two independent nodes: lets a run hold a failed node AND a ready one
@@ -67,9 +69,11 @@ def _raw_write(led, event):
 
 
 def _artifact_evidence(evidence_id):
-    return {"type": "artifact", "evidence_id": evidence_id,
-            "output_manifest": [{"name": "o.md",
-                                 "artifact_digest": evidence_id}]}
+    """The valid payload whose derived id is the given EVID/EVID2."""
+    digest = FILE_DIGEST2 if evidence_id == EVID2 else FILE_DIGEST
+    payload = artifact_evidence(digest=digest)
+    assert payload["evidence_id"] == evidence_id
+    return payload
 
 
 def _to_gate(s):
@@ -101,13 +105,14 @@ def test_T02_malformed_evidence_is_refused_before_it_is_recorded():
     with tempfile.TemporaryDirectory() as tmp:
         s = S(tmp)
         operations.dispatch(s.led, s.graph, s.rid, "a")
+        good = _artifact_evidence(EVID)
         for bad in ({"type": "artifact", "evidence_id": EVID},      # no manifest
                     {"type": "artifact", "evidence_id": EVID,
                      "output_manifest": []},                        # empty
-                    {"type": "artifact", "evidence_id": "",
-                     "output_manifest": [{"name": "o", "artifact_digest": EVID}]},
-                    {"type": "artifact", "evidence_id": EVID,
-                     "output_manifest": [{"name": "o"}]},           # no digest
+                    dict(good, evidence_id=""),                    # no id
+                    {"type": "artifact", "evidence_id": EVID,      # no digest
+                     "output_manifest": [{"path": "o", "size_bytes": 1}]},
+                    dict(good, evidence_id=EVID2),                 # forged id
                     "not-an-object"):
             _expect(OperationRefused, operations.record_return, s.led, s.graph,
                     s.rid, "a", 1, 0, bad)

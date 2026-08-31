@@ -16,6 +16,7 @@ from dagwell.graph import GraphValidationError, load_graph
 from dagwell.ledger import Ledger, LedgerIntegrityError, SCHEMA_VERSION, occurred_now
 from dagwell.ledger import events as ev_mod
 from dagwell.operations import OperationRefused
+from helpers import artifact_evidence
 from tests_scenario import AGENDA, EVID, GRAPH_TEXT, S
 
 
@@ -359,9 +360,7 @@ def test_unvouched_identity_refuses_mutation_on_both_wings():
         assert fold(graph, led.run("orphan"), "orphan")["integrity"] != "ok"
         _expect(OperationRefused, operations.record_return, led, graph,
                 "orphan", "a", attempt=1, exit_code=0,
-                output_evidence={"type": "artifact", "evidence_id": EVID,
-                                 "output_manifest": [{"name": "o.md",
-                                                      "artifact_digest": EVID}]})
+                output_evidence=artifact_evidence())
         _expect(human.DecisionRefused, human.cancel_run, led, graph,
                 "orphan", "rey")
 
@@ -398,11 +397,7 @@ def test_healthy_run_still_completes_end_to_end():
         operations.dispatch(s.led, s.graph, s.rid, "b")
         operations.record_return(s.led, s.graph, s.rid, "b", attempt=1,
                                  exit_code=0,
-                                 output_evidence={"type": "artifact",
-                                                  "evidence_id": EVID,
-                                                  "output_manifest": [
-                                                      {"name": "o.md",
-                                                       "artifact_digest": EVID}]})
+                                 output_evidence=artifact_evidence())
         assert fold(s.graph, s.led.run(s.rid), s.rid)["run_state"] == "completed"
     with tempfile.TemporaryDirectory() as tmp:
         s = S(tmp)

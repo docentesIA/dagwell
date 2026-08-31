@@ -35,13 +35,16 @@ n=next((n for n in g["nodes"] if n["id"]==sys.argv[2]),{})
 print(n.get("x_command",""))' "$GRAPH" "$1"
 }
 
-evidence_for() { # artifact evidence: the digest of what was actually written
+evidence_for() { # artifact evidence: the digest of what was actually written,
+                 # with the evidence_id derived from the manifest (spec §4.2)
   python3 -c '
-import hashlib,json,sys
+import hashlib,json,os,sys
+from dagwell.canonical import json_digest
 p=sys.argv[1]
 d="sha256:"+hashlib.sha256(open(p,"rb").read()).hexdigest()
-print(json.dumps({"type":"artifact","evidence_id":d,
-                  "output_manifest":[{"name":p.split("/")[-1],"artifact_digest":d}]}))' "$1"
+m=[{"path":p.split("/")[-1],"artifact_digest":d,"size_bytes":os.path.getsize(p)}]
+print(json.dumps({"type":"artifact","evidence_id":json_digest(m),
+                  "output_manifest":m}))' "$1"
 }
 
 while :; do

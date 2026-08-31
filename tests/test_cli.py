@@ -15,10 +15,11 @@ from pathlib import Path
 
 from dagwell import cli
 
-EVID = "sha256:" + "ab" * 32
-ARTIFACT = json.dumps({"type": "artifact", "evidence_id": EVID,
-                       "output_manifest": [{"name": "o.bin",
-                                            "artifact_digest": EVID}]})
+from helpers import artifact_evidence
+
+_PAYLOAD = artifact_evidence(path="o.bin")
+EVID = _PAYLOAD["evidence_id"]
+ARTIFACT = json.dumps(_PAYLOAD)
 GRAPH = json.dumps({"graph_id": "release", "nodes": [
     {"id": "build", "deps": [], "output_evidence": "artifact",
      "verifications": [{"verification_id": "tests", "family": "deterministic"}]},

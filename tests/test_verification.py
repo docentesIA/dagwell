@@ -13,9 +13,11 @@ from dagwell.ledger import (
     occurred_now,
 )
 
+from helpers import artifact_evidence
+
 GRAPH = "synthetic graph definition text\n"
 AGENDA = "# synthetic agenda\n"
-EVID = "sha256:" + "ab" * 32
+EVID = artifact_evidence()["evidence_id"]
 
 
 def _expect(exc_type, fn, *args, **kwargs):
@@ -47,10 +49,7 @@ def _executed_run(led):
     rid = r["run_id"]
     led.append(_node_event(rid, "node_dispatched"))
     led.append(_node_event(rid, "node_returned", exit_code=0,
-                           output_evidence={"type": "artifact", "evidence_id": EVID,
-                                            "output_manifest": [
-                                                {"name": "out.md",
-                                                 "artifact_digest": EVID}]}))
+                           output_evidence=artifact_evidence()))
     return rid
 
 

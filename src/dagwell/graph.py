@@ -26,6 +26,12 @@ class GraphValidationError(Exception):
     pass
 
 
+# Ordered difficulty tiers (Adapter/Output Evidence Spec v1.0 §3.3). Order
+# matters to operators reading a registry; selection matches tier membership,
+# never "at least this tier" — an upgrade must be declared, not inferred.
+CAPABILITY_TIERS = ("trivial", "simple", "standard", "complex", "frontier")
+
+
 def load_graph(text: bytes | str) -> dict:
     """Parse + validate + freeze identity. Fail closed on any violation.
 
@@ -93,6 +99,25 @@ def _validate_node(node: dict) -> None:
     if not isinstance(deps, list) or not all(isinstance(d, str) for d in deps):
         raise GraphValidationError(f"node {nid}: deps must be a list of node ids")
 
+    # Spec §3.1 — one identity model per node: either the node pins its
+    # executor by identity (x_command) or it delegates resolution to the
+    # binding registry (capability_requirements). Both at once would make the
+    # graph hash claim one identity while the registry resolves another.
+    caps = node.get("capability_requirements")
+    if caps is not None:
+        if "x_command" in node:
+            raise GraphValidationError(
+                f"node {nid}: capability_requirements and x_command are "
+                "mutually exclusive — one identity model per node (spec §3.1)")
+        if not isinstance(caps, dict):
+            raise GraphValidationError(
+                f"node {nid}: capability_requirements must be an object")
+        tier = caps.get("tier")
+        if tier not in CAPABILITY_TIERS:
+            raise GraphValidationError(
+                f"node {nid}: capability_requirements.tier must be one of "
+                f"{list(CAPABILITY_TIERS)}, got {tier!r}")
+
     # I28 — output evidence declaration is mandatory.
     evidence_type = node.get("output_evidence")
     if evidence_type not in EVIDENCE_TYPES:
@@ -112,17 +137,12 @@ def _validate_node(node: dict) -> None:
             raise GraphValidationError(
                 f"node {nid}: no_verification and non-empty verifications "
                 "are mutually exclusive")
-        # Fail-closed while §13.17 is open (contract: "este contrato fixa só o
-        # conceito, a identidade canônica e o fail-closed"). An unverified node
-        # rests entirely on the core's own validation of the returned evidence.
-        # The contract defines what makes evidence INVALID only for `artifact`
-        # (manifest absent, empty or malformed); for the other types the format
-        # belongs to the future Adapter/Output Evidence Specification, so the
-        # core cannot tell a receipt from a sentence. Declaring no_verification
-        # over one of those types means nothing checks the claim — neither a
-        # verifier nor the core. That is not a vacuum a human can sign for yet.
-        # No encoding is invented here and none is required: the restriction
-        # lifts by itself when §13.17 fixes the formats. See ADR-0008.
+        # ADR-0008 restricts no_verification to types the core can validate on
+        # its own. The Adapter/Output Evidence Spec v1.0 (promoted) now fixes
+        # every type's FORM — but form-validity is not effect-validity: a
+        # receipt that parses still proves nothing about the world without a
+        # verifier looking at it. Per spec §4.6 the restriction stands until a
+        # new ADR lifts it explicitly — never silently here.
         if evidence_type != "artifact":
             raise GraphValidationError(
                 f"node {nid}: no_verification is not available for evidence "

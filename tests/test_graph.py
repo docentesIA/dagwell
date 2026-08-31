@@ -2,10 +2,12 @@
 
 import json
 
+from dagwell.canonical import json_digest
 from dagwell.evidence import EvidenceValidationError, validate_output_evidence
 from dagwell.graph import GraphValidationError, load_graph
+from helpers import artifact_evidence
 
-EVID = "sha256:" + "ab" * 32
+EVID = artifact_evidence()["evidence_id"]
 
 
 def _g(**over):
@@ -109,14 +111,14 @@ def test_structural_rules():
 
 
 def test_artifact_evidence_validation():
-    ok = {"type": "artifact", "evidence_id": EVID,
-          "output_manifest": [{"name": "out.md", "artifact_digest": EVID}]}
-    validate_output_evidence(ok, "artifact")
+    validate_output_evidence(artifact_evidence(path="out.md"), "artifact")
     empty = {"type": "artifact", "evidence_id": EVID, "output_manifest": []}
     _expect(EvidenceValidationError, validate_output_evidence, empty, "artifact")
     no_digest = {"type": "artifact", "evidence_id": EVID,
-                 "output_manifest": [{"name": "out.md"}]}
+                 "output_manifest": [{"path": "out.md", "size_bytes": 2}]}
     _expect(EvidenceValidationError, validate_output_evidence, no_digest, "artifact")
+    escape = artifact_evidence(path="../out.md")
+    _expect(EvidenceValidationError, validate_output_evidence, escape, "artifact")
 
 
 def test_evidence_identity_and_type_binding():
@@ -126,8 +128,27 @@ def test_evidence_identity_and_type_binding():
     mismatch = {"type": "remote_receipt", "evidence_id": EVID}
     _expect(EvidenceValidationError, validate_output_evidence,
             mismatch, "structured_value")
-    minimal = {"type": "side_effect_receipt", "evidence_id": "receipt-0001"}
-    validate_output_evidence(minimal, "side_effect_receipt")
+    # A claim is not an identity (spec §4.1, ADR-0008): a bare sentence
+    # receipt or a hand-picked id is refused; the derived id over a
+    # checkable proof passes.
+    sentence = {"type": "side_effect_receipt", "evidence_id": "receipt-0001"}
+    _expect(EvidenceValidationError, validate_output_evidence,
+            sentence, "side_effect_receipt")
+    receipt = {"effect_type": "publication", "proof": "https://example.org/p/1"}
+    ok = {"type": "side_effect_receipt", "evidence_id": json_digest(receipt),
+          "receipt": receipt}
+    validate_output_evidence(ok, "side_effect_receipt")
+    forged = dict(ok, evidence_id=EVID)
+    _expect(EvidenceValidationError, validate_output_evidence,
+            forged, "side_effect_receipt")
+    value_ok = {"type": "structured_value",
+                "evidence_id": json_digest({"n": 1}), "value": {"n": 1}}
+    validate_output_evidence(value_ok, "structured_value")
+    remote = {"issuer": "example", "remote_id": "job-7",
+              "issued_at": "2026-08-31T00:00:00-03:00"}
+    remote_ok = {"type": "remote_receipt", "evidence_id": json_digest(remote),
+                 "receipt": remote}
+    validate_output_evidence(remote_ok, "remote_receipt")
 
 
 if __name__ == "__main__":

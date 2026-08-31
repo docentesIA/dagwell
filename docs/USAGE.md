@@ -122,11 +122,15 @@ it — `make build`, an agent, whatever the node means in your world.
 ```bash
 dagwell return --ledger run.jsonl --graph graph.json --run $RUN \
   --node build --attempt 1 --exit-code 0 \
-  --evidence '{"type":"artifact","evidence_id":"sha256:...","output_manifest":[{"name":"app.bin","artifact_digest":"sha256:..."}]}'
+  --evidence '{"type":"artifact","evidence_id":"sha256:...","output_manifest":[{"path":"app.bin","artifact_digest":"sha256:...","size_bytes":4096}]}'
 ```
 
-`--evidence` takes inline JSON or `@path/to/evidence.json`. Malformed evidence is
-refused **before** it reaches the ledger; evidence of the wrong type for what the
+`--evidence` takes inline JSON or `@path/to/evidence.json`. The `evidence_id` is
+not chosen — it is the sha256 of the canonical JSON of the manifest (Adapter/Output
+Evidence Spec §4; `dagwell.canonical.json_digest` computes it, as
+`examples/runner.sh` shows). Malformed evidence is
+refused **before** it reaches the ledger; a hand-picked `evidence_id` counts as
+malformed; evidence of the wrong type for what the
 node declared is refused too.
 
 Check the state:

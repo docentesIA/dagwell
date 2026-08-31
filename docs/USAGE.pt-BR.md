@@ -124,11 +124,15 @@ Isso registra que `build` foi entregue. **Não roda nada.** Agora vá executar �
 ```bash
 dagwell return --ledger run.jsonl --graph graph.json --run $RUN \
   --node build --attempt 1 --exit-code 0 \
-  --evidence '{"type":"artifact","evidence_id":"sha256:...","output_manifest":[{"name":"app.bin","artifact_digest":"sha256:..."}]}'
+  --evidence '{"type":"artifact","evidence_id":"sha256:...","output_manifest":[{"path":"app.bin","artifact_digest":"sha256:...","size_bytes":4096}]}'
 ```
 
-O `--evidence` aceita JSON inline ou `@caminho/para/evidencia.json`. Evidência
-malformada é recusada **antes** de chegar ao ledger; evidência de tipo diferente do
+O `--evidence` aceita JSON inline ou `@caminho/para/evidencia.json`. O
+`evidence_id` não é escolhido — é o sha256 do JSON canônico do manifest
+(Adapter/Output Evidence Spec §4; `dagwell.canonical.json_digest` o calcula, como
+mostra o `examples/runner.sh`). Evidência
+malformada é recusada **antes** de chegar ao ledger; um `evidence_id` escolhido à
+mão conta como malformado; evidência de tipo diferente do
 que o nó declarou também.
 
 Confira o estado:

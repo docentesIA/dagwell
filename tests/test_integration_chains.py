@@ -8,6 +8,7 @@ from dagwell import human, ids, runtime
 from dagwell.checkpoint import load_or_recompute
 from dagwell.fold import fold
 from dagwell.ledger import Ledger, LedgerIntegrityError, SCHEMA_VERSION, occurred_now
+from helpers import artifact_evidence
 from tests_scenario import AGENDA, EVID, GRAPH_TEXT, S
 
 DEAD = lambda item: False  # noqa: E731
@@ -51,9 +52,7 @@ def test_chain_b_evidence_to_completed():
         s.dispatch(node="b")
         runtime.record_return(
             s.led, s.graph, s.rid, "b", 1, exit_code=0,
-            output_evidence={"type": "artifact", "evidence_id": EVID,
-                             "output_manifest": [{"name": "o.md",
-                                                  "artifact_digest": EVID}]})
+            output_evidence=artifact_evidence())
         f = s.fold()
         assert f["nodes"]["b"]["state"] == "completed"   # declared vacuum
         assert f["run_state"] == "completed"

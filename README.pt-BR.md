@@ -77,6 +77,7 @@ import json
 from pathlib import Path
 
 from dagwell import human, operations, runtime
+from dagwell.canonical import json_digest
 from dagwell.fold import fold
 from dagwell.ledger import Ledger
 
@@ -95,11 +96,12 @@ operations.dispatch(ledger, graph, run_id, "write-report")
 
 # ---- you, your script, or an agent does the actual work here ----
 
+manifest = [{"path": "report.md", "artifact_digest": "sha256:" + "ab" * 32,
+             "size_bytes": 2}]
 operations.record_return(
     ledger, graph, run_id, "write-report", attempt=1, exit_code=0,
-    output_evidence={"type": "artifact", "evidence_id": "sha256:" + "ab" * 32,
-                     "output_manifest": [{"name": "report.md",
-                                          "artifact_digest": "sha256:" + "ab" * 32}]})
+    output_evidence={"type": "artifact", "evidence_id": json_digest(manifest),
+                     "output_manifest": manifest})
 
 print(fold(graph, ledger.run(run_id), run_id)["nodes"]["write-report"]["state"])
 # executed   <- transport succeeded AND evidence is present. Still not completed.
