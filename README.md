@@ -7,11 +7,12 @@ gates are first-class: successful transport alone never completes anything
 (`executed != completed`); completion is
 `successful transport + required output evidence + required approvals`.
 
-**Status: the governed core (the contract's six incremental steps) is
-implemented; no adapters yet.** Nothing here dispatches real work or spends —
-transports belong to the Adapter Transport & Capability Model milestone, still
-ahead. The normative behavior is fully specified before implementation, and the
-code grows in gated, incremental phases.
+**Status: the governed core is implemented, the Adapter/Output Evidence
+Specification v1.0 is promoted, and the first adapter exists** — the
+`subprocess` transport with a capability worker (`dagwell work`). Nothing spends
+by itself: `work` without `--go` is a plan, and `--go` is the operator
+explicitly spending their own quota. The normative behavior is fully specified
+before implementation, and the code grows in gated, incremental phases.
 
 ## Install
 
@@ -40,22 +41,28 @@ dagwell demo
 
 ## What it does today, and what it does not
 
-**There are no adapters.** Nothing here dispatches work to a provider, launches a
-process, or spends anything. That is the Adapter Transport & Capability Model
-milestone, still ahead.
+**One adapter exists: `subprocess`.** A node declares a difficulty tier and a
+mission; a binding registry (your data, not this repo) declares which CLIs and
+models serve which tiers at what relative cost; `dagwell work --go` probes,
+selects the cheapest model that satisfies the tier — difficulty dictates the
+model, a simple task never burns a frontier model — executes, and records the
+evidence of what actually landed on disk. Remote transports, automatic
+verification execution, and any retry/budget model remain ahead, each behind
+its own gate.
 
-What that leaves is not nothing, and it is the part worth understanding: **you do
-the work, DAGWELL governs it.** You (a script, a human, an agent, a CI job) execute
+The inverse model is still first-class, and still the part worth
+understanding: **you do the work, DAGWELL governs it.** You (a script, a human, an agent, a CI job) execute
 the step by whatever means you already use; the engine decides whether it was
 allowed to start, records what came back, refuses a completion that lacks evidence
 or approval, and can reconstruct the whole state from events alone.
 
 | Available now | Not yet |
 |---|---|
-| Declare a graph; fail-closed validation before any spend | Dispatching work to a provider |
-| Start a run with a frozen graph identity | Any transport, retry policy or budget model |
-| Record dispatch and return; refuse malformed evidence at the boundary | Automatic verification execution |
-| Request verifications in contract order; record machine verdicts | Liveness/timeout per transport |
+| Declare a graph; fail-closed validation before any spend | Remote transports (http, sdk, mcp, a2a) |
+| Start a run with a frozen graph identity | Retry policy or budget model |
+| Dispatch to local CLIs by difficulty tier (`dagwell work --go`) | Automatic verification execution |
+| Record dispatch and return; refuse malformed evidence at the boundary | Session persistence per platform |
+| Request verifications in contract order; record machine verdicts | |
 | Human gates: approve, reject, retry, escalate, cancel | |
 | Land a run; resume after interruption; detect orphans | |
 | Deterministic state via `fold`; tamper-proof checkpoint | |

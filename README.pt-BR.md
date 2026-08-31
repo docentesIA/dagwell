@@ -13,10 +13,11 @@ transporte bem-sucedido sozinho nunca completa nada (`executed != completed`);
 completude é
 `successful transport + required output evidence + required approvals`.
 
-**Status: o core governado (os seis passos incrementais do contrato) está
-implementado; ainda sem adapters.** Nada aqui despacha trabalho real nem gasta
-— transportes pertencem ao marco Adapter Transport & Capability Model, ainda
-por vir. O comportamento normativo é totalmente especificado antes da
+**Status: o core governado está implementado, a Adapter/Output Evidence
+Specification v1.0 está promovida, e o primeiro adapter existe** — o transporte
+`subprocess` com um worker de capacidades (`dagwell work`). Nada gasta sozinho:
+`work` sem `--go` é um plano, e `--go` é o operador gastando explicitamente a
+própria cota. O comportamento normativo é totalmente especificado antes da
 implementação, e o código cresce em fases incrementais com portões.
 
 ## Instalação
@@ -46,21 +47,28 @@ dagwell demo
 
 ## O que ele faz hoje, e o que não faz
 
-**Não há adapters.** Nada aqui despacha trabalho para um provedor, sobe processo ou
-gasta coisa alguma. Isso é o marco Adapter Transport & Capability Model, ainda à frente.
+**Existe um adapter: `subprocess`.** O nó declara um tier de dificuldade e uma
+mission; um registry de bindings (dado SEU, fora deste repositório) declara quais
+CLIs e modelos servem quais tiers a que custo relativo; `dagwell work --go` faz o
+probe, escolhe o modelo mais barato que satisfaz o tier — a dificuldade dita o
+modelo; tarefa simples nunca queima modelo de fronteira —, executa e registra a
+evidência do que de fato pousou no disco. Transportes remotos, execução
+automática de verificadores e qualquer modelo de retry/orçamento continuam à
+frente, cada um atrás do próprio portão.
 
-O que sobra não é nada, e é a parte que vale entender: **você faz o trabalho, o
-DAGWELL governa.** Você (um script, uma pessoa, um agente, um job de CI) executa o
+O modelo inverso continua de primeira classe, e continua sendo a parte que vale
+entender: **você faz o trabalho, o DAGWELL governa.** Você (um script, uma pessoa, um agente, um job de CI) executa o
 passo pelos meios que já usa; o motor decide se podia começar, registra o que voltou,
 recusa uma conclusão sem evidência ou sem aprovação, e reconstrói o estado inteiro
 só a partir dos eventos.
 
 | Disponível agora | Ainda não |
 |---|---|
-| Declarar um grafo; validação fail-closed antes de qualquer gasto | Despachar trabalho a um provedor |
-| Iniciar um run com identidade de grafo congelada | Transporte, política de retry ou modelo de orçamento |
-| Registrar despacho e retorno; recusar evidência malformada na fronteira | Execução automática de verificação |
-| Pedir verificações na ordem do contrato; registrar veredito de máquina | Liveness/timeout por transporte |
+| Declarar um grafo; validação fail-closed antes de qualquer gasto | Transportes remotos (http, sdk, mcp, a2a) |
+| Iniciar um run com identidade de grafo congelada | Política de retry ou modelo de orçamento |
+| Despachar para CLIs locais por tier de dificuldade (`dagwell work --go`) | Execução automática de verificação |
+| Registrar despacho e retorno; recusar evidência malformada na fronteira | Persistência de sessão por plataforma |
+| Pedir verificações na ordem do contrato; registrar veredito de máquina | |
 | Gates humanos: aprovar, reprovar, retentar, escalar, cancelar | |
 | Aterrissar um run; retomar após interrupção; detectar órfãos | |
 | Estado determinístico via `fold`; checkpoint à prova de adulteração | |

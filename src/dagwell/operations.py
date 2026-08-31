@@ -78,12 +78,17 @@ def _evidence_id_of(revents, node_id, k):
 
 # -- producer operations ---------------------------------------------------
 
-def dispatch(ledger: Ledger, graph: dict, run_id: str, node_id: str) -> dict:
+def dispatch(ledger: Ledger, graph: dict, run_id: str, node_id: str,
+             transport: dict | None = None) -> dict:
     """Dispatch the node's next producer attempt. Refused unless the node is
     in the derived READY state — which encodes every gate: dependency-blocked
     (pending), completed, rejected/failed until an explicit human_retry
     reopens, waiting_human, and duplicate/in-flight attempts; run-level
-    guards refuse cancelled/completed/landed runs and seq gaps."""
+    guards refuse cancelled/completed/landed runs and seq gaps.
+
+    `transport`: optional TRANSPORT FACTS of the resolved selection —
+    binding_id, model_id, family, registry_digest (spec §3.3). Facts, never
+    decisions: nothing in the fold reads them."""
     folded, _ = _guard(ledger, graph, run_id)
     node = _node(folded, node_id)
     if node["state"] != "ready":
@@ -91,12 +96,15 @@ def dispatch(ledger: Ledger, graph: dict, run_id: str, node_id: str) -> dict:
             f"node {node_id} is {node['state']} — dispatch requires the "
             "ready derived state")
     attempt = (node["attempt"] or 0) + 1
-    return ledger.append(_base(run_id, "node_dispatched", node_id=node_id,
-                               attempt=attempt))
+    e = _base(run_id, "node_dispatched", node_id=node_id, attempt=attempt)
+    if transport is not None:
+        e["transport"] = transport
+    return ledger.append(e)
 
 
 def record_return(ledger: Ledger, graph: dict, run_id: str, node_id: str,
-                  attempt: int, exit_code: int, output_evidence=None) -> dict:
+                  attempt: int, exit_code: int, output_evidence=None,
+                  transport: dict | None = None) -> dict:
     """Record the transport return and, when produced, the node's output
     evidence — validated against the type the node DECLARES (I28).
 
@@ -125,6 +133,8 @@ def record_return(ledger: Ledger, graph: dict, run_id: str, node_id: str,
               exit_code=exit_code)
     if output_evidence is not None:
         e["output_evidence"] = output_evidence
+    if transport is not None:
+        e["transport"] = transport
     return ledger.append(e)
 
 

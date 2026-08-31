@@ -230,9 +230,30 @@ even if you lost the original file.
 This is the question everyone asks after installing: **how does DAGWELL call claude,
 codex, grok?**
 
-It does not. That is not an omission in this manual — it is the state of the project.
-Adapters are the next milestone. What exists today is the inverse model, and it is
-already useful:
+Two ways. The built-in worker, and the inverse model.
+
+**The worker** (`dagwell work`): a node declares `capability_requirements`
+(a difficulty tier) and a `mission`; a binding registry — a JSON file in YOUR
+data area, see `examples/registry.example.json` — declares which CLIs and models
+serve which tiers at what relative cost. Then:
+
+```bash
+dagwell work --ledger run.jsonl --graph graph.json --run $RUN \
+  --registry registry.json --data-dir data          # plan: spends NOTHING
+dagwell work --ledger run.jsonl --graph graph.json --run $RUN \
+  --registry registry.json --data-dir data --go     # dispatch + execute: SPENDS
+```
+
+The worker probes each binding (zero-cost), picks the cheapest model that
+satisfies the node's tier — difficulty dictates the model; a tier nothing serves
+is refused before any spend — runs the mission over the subprocess transport
+with `$OUT` pointing into the attempt directory, and records the return with the
+evidence derived from what actually landed on disk. Verifications it does not
+run: it tells you what became due. The selection lands on the `node_dispatched`
+event as transport facts (binding, model, family, registry digest).
+
+**The inverse model** is still first-class, and is the way to pin a node to an
+exact command:
 
 > **You call the CLI. DAGWELL decides whether you could, records what came back, and
 > refuses to call finished anything that has no proof.**

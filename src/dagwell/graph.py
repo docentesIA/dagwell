@@ -117,6 +117,12 @@ def _validate_node(node: dict) -> None:
             raise GraphValidationError(
                 f"node {nid}: capability_requirements.tier must be one of "
                 f"{list(CAPABILITY_TIERS)}, got {tier!r}")
+        mission = node.get("mission")
+        if not isinstance(mission, str) or not mission:
+            raise GraphValidationError(
+                f"node {nid}: capability_requirements requires a non-empty "
+                "mission — the registry resolves who runs, the node still "
+                "says what (spec §3.1)")
 
     # I28 — output evidence declaration is mandatory.
     evidence_type = node.get("output_evidence")

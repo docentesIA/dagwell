@@ -145,6 +145,21 @@ def main(argv=None) -> int:
     p_return.add_argument("--evidence",
                           help="output evidence as inline JSON, or @file")
 
+    p_work = sub.add_parser(
+        "work", help="probe, select and execute READY capability nodes "
+                     "(dry-run plan without --go)")
+    common(p_work)
+    p_work.add_argument("--registry", required=True,
+                        help="path to the binding registry JSON (data area)")
+    p_work.add_argument("--data-dir", required=True,
+                        help="private data area where attempt dirs are born")
+    p_work.add_argument("--operation",
+                        help="runs/<operation>/ segment (default: graph_id)")
+    p_work.add_argument("--node", help="process only this node")
+    p_work.add_argument("--go", action="store_true",
+                        help="actually dispatch and execute — THIS SPENDS; "
+                             "without it, nothing is written or spent")
+
     p_req = sub.add_parser("request-verification",
                            help="open the verification the order requires next")
     common(p_req)
@@ -230,6 +245,42 @@ def main(argv=None) -> int:
                 ledger, graph, args.run, args.node, attempt=args.attempt,
                 exit_code=args.exit_code,
                 output_evidence=_evidence(args.evidence)))
+        elif args.command == "work":
+            from dagwell.adapters import worker
+            from dagwell.adapters.registry import load_registry
+            registry = load_registry(
+                Path(args.registry).read_text(encoding="utf-8"))
+            if args.go:
+                results = worker.work(
+                    ledger, graph, args.run, registry, args.data_dir,
+                    operation=args.operation, node_id=args.node, go=True)
+            else:
+                results = worker.plan(graph, ledger, args.run, registry)
+                if args.node:
+                    results = [r for r in results
+                               if r["node_id"] == args.node]
+            executed_any = False
+            for r in results:
+                if r["action"] == "dispatch":
+                    sel = r["selection"]
+                    print(f"{r['node_id']} (attempt {r['attempt']}, tier "
+                          f"{r['tier']}) -> {sel['binding_id']}/"
+                          f"{sel['model_id']} [{sel['family']}]")
+                elif r["action"] in ("executed", "failed"):
+                    executed_any = True
+                    print(f"{r['node_id']} (attempt {r['attempt']}): "
+                          f"{r['action']} — exit {r['exit_code']}, "
+                          f"evidence {r['evidence_id'] or 'none'}")
+                else:
+                    print(f"{r['node_id']}: {r['action']} — {r['reason']}")
+            if not results:
+                print("nothing dispatchable")
+            elif not args.go:
+                print("plan only — nothing was written or spent. "
+                      "Re-run with --go to execute (THIS SPENDS).")
+            elif executed_any:
+                print("verifications are now due in contract order — see "
+                      "status / request-verification / verdict / decide.")
         elif args.command == "request-verification":
             _emit(operations.request_verification(
                 ledger, graph, args.run, args.node,

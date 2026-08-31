@@ -121,16 +121,19 @@ def test_graph_capability_requirements():
             {"id": "a", "deps": [], "output_evidence": "artifact",
              "verifications": [{"verification_id": "v",
                                 "family": "deterministic"}]}, **node_extra)]})
-    loaded = load_graph(g({"capability_requirements": {"tier": "simple"}}))
+    loaded = load_graph(g({"capability_requirements": {"tier": "simple"},
+                           "mission": "write it to $OUT"}))
     assert loaded["nodes"]["a"]["capability_requirements"]["tier"] == "simple"
     # one identity model per node (spec §3.1)
     _expect(GraphValidationError, load_graph,
             g({"capability_requirements": {"tier": "simple"},
-               "x_command": "echo hi"}))
+               "mission": "m", "x_command": "echo hi"}))
     _expect(GraphValidationError, load_graph,
-            g({"capability_requirements": {"tier": "epic"}}))
+            g({"capability_requirements": {"tier": "epic"}, "mission": "m"}))
     _expect(GraphValidationError, load_graph,
-            g({"capability_requirements": {}}))
+            g({"capability_requirements": {}, "mission": "m"}))
+    _expect(GraphValidationError, load_graph,          # mission required
+            g({"capability_requirements": {"tier": "simple"}}))
     assert list(CAPABILITY_TIERS) == [
         "trivial", "simple", "standard", "complex", "frontier"]
 

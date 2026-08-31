@@ -232,8 +232,31 @@ funciona mesmo se você perdeu o arquivo original.
 Esta é a pergunta que todo mundo faz depois de instalar: **como o DAGWELL chama o
 claude, o codex, o grok?**
 
-Ele não chama. E não é omissão deste manual — é o estado do projeto. Adapters são o
-marco seguinte. O que existe hoje é o modelo inverso, e ele já é útil:
+De dois jeitos. O worker embutido, e o modelo inverso.
+
+**O worker** (`dagwell work`): o nó declara `capability_requirements` (um tier de
+dificuldade) e uma `mission`; um registry de bindings — um JSON na SUA área de
+dados, veja `examples/registry.example.json` — declara quais CLIs e modelos
+servem quais tiers a que custo relativo. Então:
+
+```bash
+dagwell work --ledger run.jsonl --graph graph.json --run $RUN \
+  --registry registry.json --data-dir data          # plano: NÃO gasta nada
+dagwell work --ledger run.jsonl --graph graph.json --run $RUN \
+  --registry registry.json --data-dir data --go     # despacha + executa: GASTA
+```
+
+O worker faz o probe de cada binding (custo zero), escolhe o modelo mais barato
+que satisfaz o tier do nó — a dificuldade dita o modelo; tier que ninguém serve é
+recusado antes de qualquer gasto —, roda a mission pelo transporte subprocess com
+`$OUT` apontando para o diretório da tentativa, e registra o retorno com a
+evidência derivada do que de fato pousou no disco. Verificações ele não executa:
+ele avisa o que ficou pendente. A seleção fica gravada no evento
+`node_dispatched` como fatos de transporte (binding, modelo, família, digest do
+registry).
+
+**O modelo inverso** continua de primeira classe, e é o jeito de fixar um nó a um
+comando exato:
 
 > **Você chama o CLI. O DAGWELL decide se podia, registra o que voltou, e recusa dar
 > por concluído o que não tem prova.**
