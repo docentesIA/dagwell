@@ -2,3 +2,4 @@
 # this directory but is NON-NORMATIVE until human promotion and is NOT listed here.
 # Format: sha256sum-compatible (verify with: python3 tools/check_contracts.py).
 bd1552a9f7f6aa9f03b78c6fbd46f8526f642ebced7aacec654066bcd29e623a  DAGWELL-EXECUTION-CONTRACT-v1.0.md
+aa9fb97253d02d159ecc19aaa3773ae8b1b55a783f847b264f1becb6bd45418d  DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.0.md

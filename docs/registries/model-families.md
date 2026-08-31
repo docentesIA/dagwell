@@ -1,7 +1,7 @@
 # Model family registry — `model:<family>` namespace
 
-> Seeded by DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.0-RC1 (§5). **Non-normative
-> until that specification is promoted.** Canonical family names for verdict
+> Governed by DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.0 (§5), promoted
+> 2026-08-31. Canonical family names for verdict
 > `family: model:<vendor>-<family>` (I16/R1 operates on these strings). A family
 > names a vendor's model family, never a specific model. Changes only by
 > reviewed commit.
