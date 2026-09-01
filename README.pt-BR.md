@@ -78,6 +78,22 @@ O CLI conduz o ciclo inteiro — `start`, `ready`, `dispatch`, `return`,
 `cancel`, `status` — então você nunca precisa escrever Python para usá-lo. As mesmas
 operações existem como biblioteca. **[Manual completo: docs/USAGE.pt-BR.md](docs/USAGE.pt-BR.md)**.
 
+## Relato de campo: um motor, três mundos
+
+No primeiro dia de uso real em produção, o motor governou o mesmo tipo de
+trabalho em três territórios: uma colmeia de agentes 24/7 atrás de um relay de
+mensagens (despacho por @menção, respostas viradas em evidência com hash), os
+CLIs headless locais de uma máquina (registry de bindings com tiers, probes e
+custos relativos) e um agente residente autônomo que tanto recebeu despachos
+*dentro da própria casa* quanto dirigiu ali os próprios runs governados — sem
+sudo, sem fronteiras cruzadas.
+
+O dia também produziu o melhor argumento do motor a favor de si mesmo: um agente
+saiu com exit `0` sem entregar nada, e o ledger registrou `failed — evidence
+none` em vez de um verde de mentira — foi assim que um bug real de permissão
+headless foi pego. **[Relato completo: docs/TRES-MUNDOS.pt-BR.md](docs/TRES-MUNDOS.pt-BR.md)**
+([original em inglês](docs/THREE-WORLDS.md)).
+
 ## Início rápido
 
 ```python

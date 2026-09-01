@@ -73,6 +73,21 @@ The CLI drives the whole cycle — `start`, `ready`, `dispatch`, `return`,
 operations are available as a library. **[Full manual: docs/USAGE.md](docs/USAGE.md)**
 ([em português](docs/USAGE.pt-BR.md)).
 
+## Field report: one engine, three worlds
+
+On its first day of real production use the engine governed the same kind of work
+in three territories: a hive of always-on agents behind a message relay (dispatch
+by @mention, replies turned into hashed evidence), the local headless CLIs of one
+machine (a binding registry with tiers, probes and relative costs), and an
+autonomous resident agent that both received dispatches *inside its own home* and
+drove its own governed runs there — no sudo, no crossed boundaries.
+
+That day also produced the engine's best argument for itself: an agent exited `0`
+having delivered nothing, and the ledger recorded `failed — evidence none`
+instead of a false green — which is how a real headless permission bug got
+caught. **[Full field report: docs/THREE-WORLDS.md](docs/THREE-WORLDS.md)**
+([em português](docs/TRES-MUNDOS.pt-BR.md)).
+
 ## Quickstart
 
 ```python
