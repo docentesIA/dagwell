@@ -8,7 +8,7 @@ gates are first-class: successful transport alone never completes anything
 `successful transport + required output evidence + required approvals`.
 
 **Status: the governed core is implemented, the Adapter/Output Evidence
-Specification v1.0 is promoted, and the first adapter exists** — the
+Specification v1.0 and its v1.1 model-invocation amendment are promoted, and the first adapter exists** — the
 `subprocess` transport with a capability worker (`dagwell work`). Nothing spends
 by itself: `work` without `--go` is a plan, and `--go` is the operator
 explicitly spending their own quota. The normative behavior is fully specified
@@ -45,11 +45,11 @@ dagwell demo
 mission; a binding registry (your data, not this repo) declares which CLIs and
 models serve which tiers at what relative cost; `dagwell work --go` probes,
 selects the cheapest declared model that satisfies the tier, executes the binding,
-and records the evidence of what actually landed on disk. **Known release blocker:**
-the v1.0 transport does not pass the selected model to the invocation; its recorded
-selection does not prove which model the CLI used. The
-[v1.1 proposal](docs/contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1-RC1.md)
-awaits human approval and is not implemented. Remote transports, automatic
+and records the evidence of what actually landed on disk. Under
+[v1.1, approved on 2026-09-04](docs/contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1.md),
+`{model_id}` passes the selection as one invocation argument and is mandatory for
+multimodel bindings. Literal single-model bindings remain operator declarations,
+not provider attestations. Remote transports, automatic
 verification execution, and any retry/budget model remain ahead, each behind
 its own gate.
 
@@ -212,8 +212,9 @@ What makes it checkable is not who typed it:
 - **The zero-cost suite discovers test files dynamically**, including the T1-T22
   matrix, hardening coverage and regression checks. Stdlib only, no network, no
   quota: `python3 tools/run_tests.py` reports the current results.
-- **Open findings remain documented.** In this candidate, selected-model invocation
-  requires the human-gated specification decision linked above.
+- **Changes and limits remain documented** in the
+  [0.0.2 release review](docs/RELEASE-0.0.2.md). The model-invocation amendment passed
+  its human gate; publication still requires a separate final approval.
 
 None of that makes the code correct. It makes the claims about it checkable, which
 is the most any repository can honestly offer.

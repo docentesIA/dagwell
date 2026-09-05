@@ -74,11 +74,14 @@ O que o DAGWELL acrescenta:
 - **Seleção com recusa honesta.** `trivial` vai para o binding mais barato
   capaz; se ninguém serve o tier, o motor recusa *antes* do gasto e diz por quê.
 
-A revisão da candidata encontrou um limite importante: v1.0 registra o modelo
-selecionado, mas não o passa à invocação do CLI. Essas observações, portanto,
-não demonstram qual modelo atendeu cada tier. A
-[proposta v1.1-RC1](contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1-RC1.md)
-trata dessa lacuna e ainda exige aprovação humana antes da implementação.
+A revisão da candidata encontrou um limite histórico importante: v1.0 registrava
+o modelo selecionado, mas não o passava à invocação do CLI. As observações acima,
+portanto, não demonstram qual modelo atendeu cada tier. A
+[emenda v1.1, aprovada em 2026-09-04](contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1.md)
+agora passa a seleção por `{model_id}` como argumento inteiro, obrigatório em
+bindings com vários modelos. Bindings literais de modelo único continuam sendo
+declarações do operador; nenhum dos modos atesta remotamente o comportamento do
+provedor.
 
 ## Mundo três — um agente autônomo com casa própria
 

@@ -165,6 +165,34 @@ def test_symlink_attempt_ancestor_and_output_are_not_evidence():
         assert worker._artifact_evidence_from_disk(dest, 'out') is None
 
 
+def test_selected_models_reach_real_executor_and_match_ledger():
+    mission = ("import os,sys,json;from pathlib import Path;"
+               "Path(os.environ['OUT']).write_text(json.dumps(sys.argv[1:]))")
+    for tier, expected in [('simple', 'cheap'), ('frontier', 'dear')]:
+        with tempfile.TemporaryDirectory() as tmp:
+            led, graph, rid, reg = _setup(tmp, _graph_text(tier=tier, mission=mission))
+            result, = worker.work(led, graph, rid, reg, tmp, go=True)
+            captured = json.loads((Path(result['attempt_dir']) / 'out').read_text())
+            dispatch = next(e for e in led.run(rid) if e['event_type'] == 'node_dispatched')
+            assert captured == [expected]
+            assert dispatch['transport']['model_id'] == captured[0]
+            assert dispatch['transport']['registry_digest'] == reg['registry_digest']
+
+
+def test_literal_single_model_binding_stays_compatible():
+    from test_worker import REGISTRY_TEXT
+    data = json.loads(REGISTRY_TEXT)
+    binding = data['bindings'][0]
+    binding['models'] = binding['models'][:1]
+    binding['invocation'] = binding['invocation'].replace('{model_id}', 'cheap')
+    mission = "import os,sys;open(os.environ['OUT'],'w').write(sys.argv[1])"
+    with tempfile.TemporaryDirectory() as tmp:
+        led, graph, rid, _ = _setup(tmp, _graph_text(mission=mission))
+        reg = load_registry(json.dumps(data))
+        result, = worker.work(led, graph, rid, reg, tmp, go=True)
+        assert (Path(result['attempt_dir']) / 'out').read_text() == 'cheap'
+
+
 if __name__ == '__main__':
     tests = [v for k, v in sorted(globals().copy().items()) if k.startswith('test_')]
     for test in tests:

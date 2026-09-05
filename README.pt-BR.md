@@ -14,7 +14,7 @@ completude é
 `successful transport + required output evidence + required approvals`.
 
 **Status: o core governado está implementado, a Adapter/Output Evidence
-Specification v1.0 está promovida, e o primeiro adapter existe** — o transporte
+Specification v1.0 e sua emenda v1.1 de invocação de modelo estão promovidas, e o primeiro adapter existe** — o transporte
 `subprocess` com um worker de capacidades (`dagwell work`). Nada gasta sozinho:
 `work` sem `--go` é um plano, e `--go` é o operador gastando explicitamente a
 própria cota. O comportamento normativo é totalmente especificado antes da
@@ -51,11 +51,11 @@ dagwell demo
 mission; um registry de bindings (dado SEU, fora deste repositório) declara quais
 CLIs e modelos servem quais tiers a que custo relativo; `dagwell work --go` faz o
 probe, escolhe o modelo declarado mais barato que satisfaz o tier, executa o binding
-e registra a evidência do que de fato pousou no disco. **Bloqueio conhecido da
-versão:** o transporte v1.0 não passa o modelo selecionado à invocação; a seleção
-registrada não prova qual modelo o CLI usou. A
-[proposta v1.1](docs/contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1-RC1.md)
-aguarda aprovação humana e não está implementada. Transportes remotos, execução
+e registra a evidência do que de fato pousou no disco. Pela
+[v1.1, aprovada em 2026-09-04](docs/contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1.md),
+`{model_id}` passa a seleção como um argumento da invocação e é obrigatório em
+bindings com múltiplos modelos. Bindings literais de um só modelo continuam sendo
+declarações do operador, não atestados do provedor. Transportes remotos, execução
 automática de verificadores e qualquer modelo de retry/orçamento continuam à
 frente, cada um atrás do próprio portão.
 
@@ -213,8 +213,9 @@ O que o torna conferível não é quem digitou:
 - **A suíte de custo zero descobre os arquivos de teste dinamicamente**, incluindo
   a matriz T1–T22, hardening e regressões. Só biblioteca padrão, sem rede, sem cota:
   `python3 tools/run_tests.py` informa os resultados atuais.
-- **Achados abertos continuam documentados.** Nesta candidata, invocar o modelo
-  selecionado depende da decisão humana sobre a especificação vinculada acima.
+- **Mudanças e limites continuam documentados** na
+  [revisão da versão 0.0.2](docs/RELEASE-0.0.2.md). A emenda de invocação de modelo
+  passou pelo gate humano; a publicação ainda exige aprovação final separada.
 
 Nada disso torna o código correto. Torna as afirmações sobre ele conferíveis, que é o
 máximo que um repositório pode honestamente oferecer.

@@ -20,7 +20,7 @@ REGISTRY_TEXT = json.dumps({
     "registry_version": 1,
     "bindings": [
         {"binding_id": "py-cli", "transport": "subprocess",
-         "platform": "python", "invocation": PY + " -c {mission}",
+         "platform": "python", "invocation": PY + " -c {mission} {model_id}",
          "timeout_seconds": 60,
          "models": [
              {"model_id": "cheap", "family": "anthropic-claude",

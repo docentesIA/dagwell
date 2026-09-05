@@ -255,11 +255,15 @@ integridade degradada. `status` preserva a leitura diagnóstica dos históricos
 danificados suportados; colisão e regressão de sequência recusam a projeção.
 
 Ele faz probes de custo zero e seleciona o modelo declarado mais barato que serve
-o tier; sem candidato, recusa antes do gasto. **Bloqueio conhecido:** a invocação
-v1.0 não recebe o modelo selecionado, portanto a seleção registrada não prova qual
-modelo o CLI usou. A
-[proposta v1.1-RC1](contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1-RC1.md)
-aguarda aprovação humana e não está implementada.
+o tier; sem candidato, recusa antes do gasto. A
+[emenda v1.1, aprovada em 2026-09-04](contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1.md)
+passa o `model_id` selecionado para `{model_id}` como um argumento inteiro da
+invocação, sem interpretação de shell. Binding com vários modelos precisa desse
+marcador; a omissão é recusada antes de probe ou despacho. Por exemplo, migre
+`claude -p {mission}` para `claude --model {model_id} -p {mission}`. Binding de um
+só modelo pode manter invocação literal; cabe ao operador corresponder a invocação
+ao modelo declarado. Essa compatibilidade é declaração do operador, não atestado
+do provedor.
 
 O subprocesso roda com diretório de trabalho igual ao diretório da tentativa e
 `$OUT` absoluto apontando para o arquivo `out`, inclusive com `--data-dir` relativo.

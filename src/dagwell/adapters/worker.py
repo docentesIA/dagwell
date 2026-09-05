@@ -153,7 +153,8 @@ def _work(ledger, graph, run_id, registry, data_dir, *, operation=None,
         adir = root / adir.relative_to(Path(data_dir))
         if adir.resolve() != adir:
             raise operations.OperationRefused('attempt path contains a symlink')
-        executable = st.build_argv(binding['invocation'], node['mission'])[0]
+        executable = st.build_argv(binding['invocation'], node['mission'],
+                                   model_id=chosen['model_id'])[0]
         search_path = os.pathsep.join(
             str(Path(entry) if Path(entry).is_absolute() else adir / entry)
             for entry in env.get('PATH', os.defpath).split(os.pathsep))
@@ -172,7 +173,8 @@ def _work(ledger, graph, run_id, registry, data_dir, *, operation=None,
 
         operations.dispatch(ledger, graph, run_id, nid, transport=chosen,
                             expected_attempt=attempt)
-        facts = st.execute(binding, mission, out_path, env=env)
+        facts = st.execute(binding, mission, out_path, env=env,
+                           model_id=chosen['model_id'])
         evidence = _artifact_evidence_from_disk(adir, OUT_NAME)
         if facts.get('transport_error'):
             # A race after preflight can still prevent spawn. No child means

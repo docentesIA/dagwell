@@ -22,7 +22,7 @@ REGISTRY = {
     "registry_version": 1,
     "bindings": [
         {"binding_id": "claude-cli", "transport": "subprocess",
-         "platform": "claude", "invocation": "claude -p {mission}",
+         "platform": "claude", "invocation": "claude --model {model_id} -p {mission}",
          "timeout_seconds": 60,
          "models": [
              {"model_id": "haiku", "family": "anthropic-claude",

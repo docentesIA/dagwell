@@ -34,6 +34,12 @@ def _require_str(obj: dict, field: str, where: str) -> str:
     value = obj.get(field)
     if not isinstance(value, str) or not value:
         raise RegistryValidationError(f"{where}: non-empty {field} is required")
+    if '\x00' in value:
+        raise RegistryValidationError(f'{field} cannot contain NUL')
+    try:
+        value.encode('utf-8')
+    except UnicodeEncodeError as exc:
+        raise RegistryValidationError(f'{field} must be valid UTF-8') from exc
     return value
 
 
@@ -88,7 +94,7 @@ def _validate_binding(binding: dict) -> None:
 
     invocation = _require_str(binding, "invocation", f"binding {bid}")
     try:
-        build_argv(invocation, "validation-only")
+        build_argv(invocation, "validation-only", model_id="validation-model")
     except TransportError as exc:
         raise RegistryValidationError(
             f"binding {bid}: {exc}") from exc
@@ -113,12 +119,18 @@ def _validate_binding(binding: dict) -> None:
     if not isinstance(models, list) or not models:
         raise RegistryValidationError(
             f"binding {bid}: models must be a non-empty list")
+    if len(models) > 1 and "{model_id}" not in shlex.split(invocation):
+        raise RegistryValidationError(
+            f"binding {bid}: multiple models require {{model_id}} in invocation "
+            "(Adapter Specification v1.1)")
     model_ids = set()
     for model in models:
         if not isinstance(model, dict):
             raise RegistryValidationError(
                 f"binding {bid}: every model must be an object")
         mid = _require_str(model, "model_id", f"binding {bid} model")
+        if "\x00" in mid:
+            raise RegistryValidationError(f"binding {bid}: model_id cannot contain NUL")
         if mid in model_ids:
             raise RegistryValidationError(
                 f"binding {bid}: duplicate model_id {mid}")

@@ -29,7 +29,7 @@ class TransportError(Exception):
     pass
 
 
-def build_argv(invocation: str, mission: str) -> list[str]:
+def build_argv(invocation: str, mission: str, *, model_id: str | None = None) -> list[str]:
     """Template -> argv. The template is split first, the mission is then
     substituted as a single argument — mission content never reaches a
     shell and cannot add, split, or reorder arguments."""
@@ -37,14 +37,28 @@ def build_argv(invocation: str, mission: str) -> list[str]:
         argv = shlex.split(invocation)
     except ValueError as exc:
         raise TransportError("invalid invocation quoting") from exc
-    if (not argv or argv[0] == "{mission}" or "\x00" in invocation
+    markers = ("{mission}", "{model_id}")
+    if (not argv or argv[0] in markers or "\x00" in invocation
             or "{mission}" not in argv
-            or any("{mission}" in token and token != "{mission}" for token in argv)):
+            or any(marker in token and token != marker
+                   for token in argv for marker in markers)):
         raise TransportError(
-            "invocation template must carry {mission} as its own argument — "
-            "embedding it inside another token would splice mission text "
-            "into that argument")
-    return [mission if token == "{mission}" else token for token in argv]
+            "invocation requires {mission}; {mission} and {model_id} must "
+            "be whole arguments and cannot be the executable")
+    if "{model_id}" in argv and (
+            not isinstance(model_id, str) or not model_id or "\x00" in model_id):
+        raise TransportError("{model_id} requires a non-empty selected model without NUL")
+    replacements = {"{mission}": mission, "{model_id}": model_id}
+    # One substitution pass: marker-looking content inside either value is data.
+    resolved = [replacements.get(token, token) for token in argv]
+    for argument in resolved:
+        if not isinstance(argument, str) or '\x00' in argument:
+            raise TransportError('invocation arguments must be strings without NUL')
+        try:
+            argument.encode('utf-8')
+        except UnicodeEncodeError as exc:
+            raise TransportError('invocation arguments must be valid UTF-8') from exc
+    return resolved
 
 
 def _signal_group(proc, sig):
@@ -68,9 +82,10 @@ def _wait_group(proc, grace):
         time.sleep(min(0.02, remaining))
 
 
-def execute(binding: dict, mission: str, out_path: str, *, env: dict) -> dict:
+def execute(binding: dict, mission: str, out_path: str, *, env: dict,
+            model_id: str | None = None) -> dict:
     """Run one attempt. Returns transport facts only."""
-    argv = build_argv(binding["invocation"], mission)
+    argv = build_argv(binding["invocation"], mission, model_id=model_id)
     output = Path(out_path).resolve()
     child_env = {**env, "OUT": str(output)}
     started = time.monotonic()

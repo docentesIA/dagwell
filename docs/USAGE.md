@@ -252,11 +252,14 @@ degraded integrity. `status` remains the diagnostic reading surface for supporte
 damaged histories; sequence collisions and regressions refuse projection.
 
 It probes bindings at zero cost and selects the cheapest declared model serving
-the tier; no candidate means refusal before spend. **Known blocker:** the v1.0
-invocation does not receive the selected model, so the recorded selection is not
-proof of the model used by the CLI. The
-[v1.1-RC1 proposal](contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1-RC1.md)
-awaits human approval and is not implemented.
+the tier; no candidate means refusal before spend. The
+[v1.1 amendment, approved on 2026-09-04](contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1.md)
+passes the selected `model_id` to `{model_id}` as one complete invocation argument,
+without shell interpretation. A binding with multiple models must include that
+marker; omission is refused before probing or dispatch. For example, migrate
+`claude -p {mission}` to `claude --model {model_id} -p {mission}`. Single-model
+bindings may keep a literal invocation; the operator must match it to the declared
+model. That compatibility mode is an operator declaration, not provider attestation.
 
 The subprocess runs with its working directory set to the attempt directory and
 an absolute `$OUT` path to its `out` file, including when `--data-dir` is relative.

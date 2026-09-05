@@ -5,7 +5,7 @@
       "binding_id": "claude-cli",
       "transport": "subprocess",
       "platform": "claude",
-      "invocation": "claude -p {mission}",
+      "invocation": "claude --model {model_id} -p {mission}",
       "probe": "claude --version",
       "timeout_seconds": 3600,
       "models": [

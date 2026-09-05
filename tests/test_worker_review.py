@@ -20,7 +20,7 @@ def test_second_pilot_refuses_while_status_remains_readable():
         started, release = threading.Event(), threading.Event()
         results, errors = [], []
 
-        def execute(binding, mission, out_path, *, env):
+        def execute(binding, mission, out_path, *, env, model_id=None):
             started.set()
             assert release.wait(5), 'test executor was not released'
             Path(out_path).write_text('review artifact')

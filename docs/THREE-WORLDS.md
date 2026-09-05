@@ -71,11 +71,13 @@ What DAGWELL adds:
   binding; if none serves the tier, the engine refuses *before* the spend and
   says why.
 
-The candidate review found an important limit: v1.0 records the selected model
-but does not pass it into the CLI invocation. These observations therefore do
-not establish which model actually served each tier. The
-[v1.1-RC1 proposal](contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1-RC1.md)
-addresses that gap and still requires human approval before implementation.
+The candidate review found an important historical limit: v1.0 recorded the
+selected model but did not pass it into the CLI invocation. The observations
+above therefore do not establish which model actually served each tier. The
+[v1.1 amendment, approved on 2026-09-04](contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1.md)
+now passes that selection through `{model_id}` as a complete argument, mandatory
+for multimodel bindings. Literal single-model bindings remain operator
+declarations; neither mode remotely attests to provider behavior.
 
 ## World three — an autonomous agent with a home of its own
 
