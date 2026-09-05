@@ -24,6 +24,18 @@ def is_legacy(run_id) -> bool:
     return isinstance(run_id, str) and run_id.startswith(LEGACY_PREFIX)
 
 
+def is_canonical_run_id(run_id) -> bool:
+    """Validate the promoted UUIDv7 encoding without rewriting user input."""
+    if not isinstance(run_id, str):
+        return False
+    try:
+        value = uuid.UUID(run_id)
+    except ValueError:
+        return False
+    return (value.version == 7 and value.variant == uuid.RFC_4122
+            and str(value) == run_id)
+
+
 def uuid7() -> uuid.UUID:
     """RFC 9562 UUIDv7. Uses the stdlib generator when available (Python 3.14+)."""
     if hasattr(uuid, "uuid7"):

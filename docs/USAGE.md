@@ -29,11 +29,11 @@ With a clone, `.venv/bin/dagwell` works without activating anything.
 
 **You do the work. DAGWELL governs it.**
 
-There are no adapters yet: DAGWELL never launches a process, calls a provider or
-spends anything. You run each step however you already do — a script, a CLI, an
-agent, a person — and DAGWELL decides whether it was allowed to start, records what
-came back, and refuses to call anything finished without the evidence and the
-approvals the graph demands.
+The `subprocess` adapter can execute local commands through `work --go`, consuming
+whatever quota those commands use. Alternatively, you execute a step through a
+script, CLI, agent or person and record it through the governed operations.
+DAGWELL checks whether work may start and whether the returned evidence and
+approvals meet the graph's requirements. `work` without `--go` only plans.
 
 The one rule worth internalising:
 
@@ -42,8 +42,10 @@ executed != completed
 completed = successful transport + required output evidence + required approvals
 ```
 
-A step that exits 0 and produces its output is `executed`. It is **not** done. It
-becomes `completed` only after its declared verifications conclude.
+A step that returns successfully with valid output remains `executed` while its
+required verifications are outstanding. It becomes `completed` when those checks
+approve; an artifact node with an explicit valid `no_verification` waiver can
+reach `completed` immediately. A timed-out process failed even if it exits 0.
 
 State is never stored. Every projection you see is recomputed from the event log.
 
@@ -244,13 +246,41 @@ dagwell work --ledger run.jsonl --graph graph.json --run $RUN \
   --registry registry.json --data-dir data --go     # dispatch + execute: SPENDS
 ```
 
-The worker probes each binding (zero-cost), picks the cheapest model that
-satisfies the node's tier — difficulty dictates the model; a tier nothing serves
-is refused before any spend — runs the mission over the subprocess transport
-with `$OUT` pointing into the attempt directory, and records the return with the
-evidence derived from what actually landed on disk. Verifications it does not
-run: it tells you what became due. The selection lands on the `node_dispatched`
-event as transport facts (binding, model, family, registry digest).
+The worker validates the run before probes or directory creation. `ready`, `work`
+and the library's `plan` refuse unknown runs, a divergent frozen graph, and
+degraded integrity. `status` remains the diagnostic reading surface for supported
+damaged histories; sequence collisions and regressions refuse projection.
+
+It probes bindings at zero cost and selects the cheapest declared model serving
+the tier; no candidate means refusal before spend. **Known blocker:** the v1.0
+invocation does not receive the selected model, so the recorded selection is not
+proof of the model used by the CLI. The
+[v1.1-RC1 proposal](contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1-RC1.md)
+awaits human approval and is not implemented.
+
+The subprocess runs with its working directory set to the attempt directory and
+an absolute `$OUT` path to its `out` file, including when `--data-dir` is relative.
+Use absolute paths for existing executables, scripts and input files outside that
+directory. The worker reserves a fresh directory per run/node/attempt and refuses
+an existing attempt directory instead of overwriting history. It collects a
+non-empty regular `out` file, not a symlink, and hashes the bytes actually read.
+
+Only one `work --go` pilot may hold a given run in a given ledger. Its nonblocking
+lock is separate from the ledger lock, so a second pilot is refused while `status`
+remains readable. The lock file remains on disk; its existence alone does not mean
+a worker is running. This is local worker coordination, not distributed execution.
+
+The reported action comes from the ledger's fold: failed transport, timeout or
+missing evidence yields `failed`; valid output awaiting checks yields `executed`;
+a valid `no_verification` waiver may yield `completed`. The CLI exits 1 if any
+result is `failed` or `refused`. The worker does not execute verifications.
+
+A missing executable detected during preflight is refused before dispatch. If
+spawning fails after dispatch despite preflight, there is no child exit status
+to record: the command refuses and the attempt remains `running`. Recovery needs
+the library's `runtime.resume(..., still_in_progress=provider)` with an explicit
+liveness provider confirming that work is no longer running. The CLI does not
+supply that provider; there is no automatic orphan timeout or automatic retry.
 
 **The inverse model** is still first-class, and is the way to pin a node to an
 exact command:
@@ -340,9 +370,9 @@ and the file at `$OUT` as the proof.
 
 ### 5.5 Cost
 
-DAGWELL spends nothing. **Your `x_command` spends.** Every dispatched node is a paid
-call or a consumed quota, and the engine owns no budget model — §13.12 is open and no
-formula was invented.
+**The invoked command determines the cost**, whether launched by `work --go` or
+an external `x_command` runner. It may consume provider quota; local deterministic
+commands can be free. The engine owns no budget model — §13.12 remains open.
 
 In practice:
 
@@ -372,7 +402,8 @@ changes between them is only the `x_command`.
 |---|---|
 | `demo` | full cycle in a temp dir, narrated. No ledger needed |
 | `start` | validate the graph, freeze its identity, create the run. Prints the run id |
-| `ready` | nodes the topology has unblocked |
+| `ready` | dispatchable nodes after run identity and integrity validation |
+| `work` | plan capability dispatches; `--go` executes them with the subprocess adapter |
 | `status` | the projection: run state, every node, anomalies |
 | `dispatch` | record that a node was handed out (**does not run it**) |
 | `return` | record the transport return and, when produced, the evidence |
@@ -413,7 +444,8 @@ ledger keeps mistakes as historical data.
 
 `(integrity: degraded)` means the fold cannot vouch for this run's identity — a gap
 in `seq`, or no authoritative `run_created`. The run stays **readable** but every
-mutation is refused until a human reconciles it.
+mutation is refused. Sequence-gap reconciliation remains an open specification;
+this version offers no repair command, and editing the ledger is not recovery.
 
 ## 8. When something is refused
 
@@ -439,13 +471,16 @@ ledger is wrong — fix that, not the guard.
 |---|---|
 | `run.jsonl` | the ledger: every event, append-only, one JSON object per line |
 | `graphs/` | frozen graph snapshots, addressed by content hash |
+| `<data-dir>/runs/<operation>/<run_id>/<node_id>/t<k>/` | immutable attempt artifacts created by the worker; `$OUT` is the absolute path to `out` here |
+| `.<ledger-name>.<run-hash>.work.lock` beside the ledger | local pilot lock inode, retained after the worker exits; no run state stored |
 
-Never edit or delete either. State is a deterministic fold of the ledger: remove a
+Preserve ledgers, frozen snapshots and attempt artifacts. State is a deterministic
+fold of the ledger: remove a
 line and you have changed history, not fixed it. The checkpoint is always recomputed
 from events, so tampering with a cache changes nothing except the tamper evidence.
 
-Both paths are yours — commit them, back them up, or keep them private, as the work
-demands.
+Keep these runtime files in the private data area, outside the public product
+repository, and back them up according to the work's requirements.
 
 ## 10. Using the library instead
 

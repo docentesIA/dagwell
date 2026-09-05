@@ -79,7 +79,7 @@ def _evidence_id_of(revents, node_id, k):
 # -- producer operations ---------------------------------------------------
 
 def dispatch(ledger: Ledger, graph: dict, run_id: str, node_id: str,
-             transport: dict | None = None) -> dict:
+             transport: dict | None = None, *, expected_attempt: int | None = None) -> dict:
     """Dispatch the node's next producer attempt. Refused unless the node is
     in the derived READY state — which encodes every gate: dependency-blocked
     (pending), completed, rejected/failed until an explicit human_retry
@@ -96,6 +96,9 @@ def dispatch(ledger: Ledger, graph: dict, run_id: str, node_id: str,
             f"node {node_id} is {node['state']} — dispatch requires the "
             "ready derived state")
     attempt = (node["attempt"] or 0) + 1
+    if expected_attempt is not None and attempt != expected_attempt:
+        raise OperationRefused(
+            f"stale plan: expected attempt {expected_attempt}, current {attempt}")
     e = _base(run_id, "node_dispatched", node_id=node_id, attempt=attempt)
     if transport is not None:
         e["transport"] = transport

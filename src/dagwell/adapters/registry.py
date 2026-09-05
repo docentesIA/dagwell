@@ -9,10 +9,13 @@ records what WAS used; the registry proposes what MAY be used.
 """
 
 import json
+import math
 import re
+import shlex
 
 from dagwell import canonical
 from dagwell.graph import CAPABILITY_TIERS
+from dagwell.adapters.transports.subprocess_transport import TransportError, build_argv
 
 # Closed set of transport NAMES (spec §6.1). Only subprocess is implemented;
 # the others are reserved and refuse at load until their gated extensions
@@ -84,16 +87,24 @@ def _validate_binding(binding: dict) -> None:
     _require_str(binding, "platform", f"binding {bid}")
 
     invocation = _require_str(binding, "invocation", f"binding {bid}")
-    if "{mission}" not in invocation:
+    try:
+        build_argv(invocation, "validation-only")
+    except TransportError as exc:
         raise RegistryValidationError(
-            f"binding {bid}: invocation template must contain {{mission}} "
-            "(spec §3.2 — it is one of the only two substitution points)")
+            f"binding {bid}: {exc}") from exc
+    if "probe" in binding:
+        probe = _require_str(binding, "probe", f"binding {bid}")
+        try:
+            if not shlex.split(probe) or "\x00" in probe:
+                raise ValueError("empty or invalid probe")
+        except ValueError as exc:
+            raise RegistryValidationError(f"binding {bid}: invalid probe command") from exc
 
     # Spec §6.2: timeout is MANDATORY for subprocess bindings — no invented
     # universal default, fail-closed on absence.
     timeout = binding.get("timeout_seconds")
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) \
-            or timeout <= 0:
+            or (isinstance(timeout, float) and not math.isfinite(timeout)) or timeout <= 0:
         raise RegistryValidationError(
             f"binding {bid}: timeout_seconds must be a positive number "
             "(mandatory, spec §6.2)")
@@ -128,7 +139,7 @@ def _validate_binding(binding: dict) -> None:
                     f"({list(CAPABILITY_TIERS)})")
         cost = model.get("relative_cost")
         if not isinstance(cost, (int, float)) or isinstance(cost, bool) \
-                or cost <= 0:
+                or (isinstance(cost, float) and not math.isfinite(cost)) or cost <= 0:
             raise RegistryValidationError(
                 f"binding {bid} model {mid}: relative_cost must be a "
                 "positive number")

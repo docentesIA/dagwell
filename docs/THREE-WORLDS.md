@@ -1,8 +1,9 @@
 # Field report: one engine, three worlds
 
-> First day of real production use, 2026-08-31. Everything below happened against
-> live ledgers; nothing is a mock. Infrastructure details (hosts, keys, channel
-> ids) are omitted on purpose.
+> Historical field report from 2026-08-31, with reliability review notes added
+> for the next candidate. Production anecdotes are distinct from the zero-cost
+> regression checks below. Infrastructure details (hosts, keys, channel ids)
+> are omitted on purpose.
 
 ## The claim, restated
 
@@ -70,6 +71,12 @@ What DAGWELL adds:
   binding; if none serves the tier, the engine refuses *before* the spend and
   says why.
 
+The candidate review found an important limit: v1.0 records the selected model
+but does not pass it into the CLI invocation. These observations therefore do
+not establish which model actually served each tier. The
+[v1.1-RC1 proposal](contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1-RC1.md)
+addresses that gap and still requires human approval before implementation.
+
 ## World three — an autonomous agent with a home of its own
 
 A resident agent with its own unprivileged user, directory and cron — by design.
@@ -91,11 +98,26 @@ What DAGWELL adds, in both directions:
 
 ## Operational discipline that emerged from day one
 
-- **One pilot per run.** Two `work --go` loops on the same run pay the same
-  mission twice. A file-lock wrapper now refuses the second pilot with a clear
-  message; a native lock in `work` is on the roadmap.
-- **Ghost runs refused.** A run id absent from the ledger must be rejected before
-  anything happens — discovered in testing, proposed as native fail-closed.
+- **One pilot per run.** Duplicate spending was reported on day one and prompted
+  a wrapper. The candidate review did not reproduce a simple duplicate dispatch:
+  existing ledger guards already refuse a repeated attempt. A distinct race was
+  identified between a stale worker plan and a human-authorized retry. The worker
+  now binds dispatch to its expected attempt and uses a separate per-run pilot
+  lock; a second worker is refused without holding the ledger lock or blocking
+  `status`. This is local coordination, not a distributed execution guarantee.
+- **Ghost runs refused.** The earlier worker could plan an unknown run, but its
+  governed dispatch already refused creating that execution. The candidate moves
+  refusal ahead of probes and attempt directories in `work`/`plan`/`ready`, also
+  checking frozen identity and degraded integrity. Diagnostic `status` remains
+  available for supported damaged histories.
+
+The candidate also sets the subprocess working directory to a fresh attempt
+directory, supplies an absolute `$OUT`, and refuses overwriting an existing
+attempt. External wrappers that intentionally switch users or directories remain
+the operator's responsibility. Worker results now reflect the fold, including
+timeout failure with exit 0 and immediate completion under a valid explicit
+verification waiver. See [Usage](USAGE.md#5-binding-it-to-real-clis) for operation
+and recovery details.
 
 ## Next: DAGWELL as an ACP agent
 

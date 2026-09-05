@@ -12,6 +12,8 @@ into approved/rejected is exactly what no adapter component may do
 (AGENTS.md §8, I6).
 """
 
+import os
+from pathlib import Path
 import shlex
 import signal
 import subprocess
@@ -31,8 +33,13 @@ def build_argv(invocation: str, mission: str) -> list[str]:
     """Template -> argv. The template is split first, the mission is then
     substituted as a single argument — mission content never reaches a
     shell and cannot add, split, or reorder arguments."""
-    argv = shlex.split(invocation)
-    if "{mission}" not in argv:
+    try:
+        argv = shlex.split(invocation)
+    except ValueError as exc:
+        raise TransportError("invalid invocation quoting") from exc
+    if (not argv or argv[0] == "{mission}" or "\x00" in invocation
+            or "{mission}" not in argv
+            or any("{mission}" in token and token != "{mission}" for token in argv)):
         raise TransportError(
             "invocation template must carry {mission} as its own argument — "
             "embedding it inside another token would splice mission text "
@@ -40,12 +47,43 @@ def build_argv(invocation: str, mission: str) -> list[str]:
     return [mission if token == "{mission}" else token for token in argv]
 
 
+def _signal_group(proc, sig):
+    try:
+        os.killpg(proc.pid, sig)
+    except ProcessLookupError:
+        pass
+
+
+def _wait_group(proc, grace):
+    deadline = time.monotonic() + grace
+    while True:
+        proc.poll()  # reap the leader independently of surviving descendants
+        try:
+            os.killpg(proc.pid, 0)
+        except ProcessLookupError:
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.02, remaining))
+
+
 def execute(binding: dict, mission: str, out_path: str, *, env: dict) -> dict:
     """Run one attempt. Returns transport facts only."""
     argv = build_argv(binding["invocation"], mission)
-    child_env = {**env, "OUT": out_path}
+    output = Path(out_path).resolve()
+    child_env = {**env, "OUT": str(output)}
     started = time.monotonic()
-    proc = subprocess.Popen(argv, env=child_env)
+    try:
+        proc = subprocess.Popen(argv, env=child_env, cwd=output.parent,
+                                start_new_session=True)
+    except OSError as exc:
+        # No process existed, hence there is no exit status to invent. Avoid
+        # exception messages: executable names and environment may be private.
+        return {"transport": "subprocess", "exit_code": None,
+                "duration_seconds": round(time.monotonic() - started, 3),
+                "timed_out": False,
+                "transport_error": {"type": type(exc).__name__, "errno": exc.errno}}
     timed_out = False
     try:
         proc.wait(timeout=binding["timeout_seconds"])
@@ -53,15 +91,12 @@ def execute(binding: dict, mission: str, out_path: str, *, env: dict) -> dict:
         timed_out = True
         for sig, grace in ((signal.SIGINT, GRACE_SECONDS),
                            (signal.SIGTERM, GRACE_SECONDS)):
-            proc.send_signal(sig)
-            try:
-                proc.wait(timeout=grace)
+            _signal_group(proc, sig)
+            if _wait_group(proc, grace):
                 break
-            except subprocess.TimeoutExpired:
-                continue
         else:
-            proc.kill()
-            proc.wait()
+            _signal_group(proc, signal.SIGKILL)
+        proc.wait()
     return {
         "transport": "subprocess",
         "exit_code": proc.returncode,

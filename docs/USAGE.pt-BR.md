@@ -32,10 +32,11 @@ Com um clone, `.venv/bin/dagwell` funciona sem ativar nada.
 
 **Você faz o trabalho. O DAGWELL governa.**
 
-Ainda não há adapters: o DAGWELL nunca sobe processo, nunca chama provedor, nunca
-gasta nada. Você executa cada passo do jeito que já executa — um script, uma CLI, um
-agente, uma pessoa — e o DAGWELL decide se aquilo podia começar, registra o que
-voltou, e recusa dar por concluído sem a evidência e as aprovações que o grafo exige.
+O adapter `subprocess` executa comandos locais por `work --go`, consumindo a cota
+que esses comandos usarem. Outra opção é executar o passo por um script, CLI,
+agente ou pessoa e registrá-lo pelas operações governadas. O DAGWELL verifica se
+o trabalho pode começar e se a evidência e as aprovações atendem ao grafo.
+`work` sem `--go` apenas planeja.
 
 A regra que vale internalizar:
 
@@ -44,8 +45,10 @@ executed != completed
 completed = transporte bem-sucedido + evidência de saída exigida + aprovações exigidas
 ```
 
-Um passo que sai com código 0 e produz a saída está `executed`. **Não** está pronto.
-Ele vira `completed` só depois que as verificações declaradas concluírem.
+Um passo com transporte bem-sucedido e saída válida fica `executed` enquanto as
+verificações obrigatórias estiverem pendentes. Ele vira `completed` quando forem
+aprovadas; um nó de artefato com dispensa explícita válida `no_verification` pode
+chegar a `completed` imediatamente. Timeout é falha mesmo se o processo sair com 0.
 
 Estado nunca é armazenado. Toda projeção que você vê é recalculada a partir dos eventos.
 
@@ -246,14 +249,43 @@ dagwell work --ledger run.jsonl --graph graph.json --run $RUN \
   --registry registry.json --data-dir data --go     # despacha + executa: GASTA
 ```
 
-O worker faz o probe de cada binding (custo zero), escolhe o modelo mais barato
-que satisfaz o tier do nó — a dificuldade dita o modelo; tier que ninguém serve é
-recusado antes de qualquer gasto —, roda a mission pelo transporte subprocess com
-`$OUT` apontando para o diretório da tentativa, e registra o retorno com a
-evidência derivada do que de fato pousou no disco. Verificações ele não executa:
-ele avisa o que ficou pendente. A seleção fica gravada no evento
-`node_dispatched` como fatos de transporte (binding, modelo, família, digest do
-registry).
+O worker valida o run antes de probes ou criação de diretórios. `ready`, `work`
+e `plan` da biblioteca recusam run inexistente, grafo congelado divergente e
+integridade degradada. `status` preserva a leitura diagnóstica dos históricos
+danificados suportados; colisão e regressão de sequência recusam a projeção.
+
+Ele faz probes de custo zero e seleciona o modelo declarado mais barato que serve
+o tier; sem candidato, recusa antes do gasto. **Bloqueio conhecido:** a invocação
+v1.0 não recebe o modelo selecionado, portanto a seleção registrada não prova qual
+modelo o CLI usou. A
+[proposta v1.1-RC1](contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1-RC1.md)
+aguarda aprovação humana e não está implementada.
+
+O subprocesso roda com diretório de trabalho igual ao diretório da tentativa e
+`$OUT` absoluto apontando para o arquivo `out`, inclusive com `--data-dir` relativo.
+Use caminhos absolutos para executáveis, scripts e entradas existentes fora dessa
+pasta. O worker reserva um diretório novo por run/nó/tentativa e recusa diretório
+de tentativa existente, preservando o histórico. Coleta um arquivo `out` regular
+não vazio, sem seguir link simbólico, e calcula o hash dos bytes lidos.
+
+Só um piloto de `work --go` pode conduzir um dado run em um dado ledger. Sua trava
+não bloqueante é separada da trava do ledger: o segundo piloto é recusado e
+`status` continua legível. O arquivo de trava permanece no disco; sua existência
+não significa que há worker ativo. É coordenação local de workers, sem execução
+distribuída.
+
+A ação informada vem do fold do ledger: falha de transporte, timeout ou evidência
+ausente produzem `failed`; saída válida aguardando verificações produz `executed`;
+dispensa válida `no_verification` pode produzir `completed`. O CLI sai com código 1
+se algum resultado for `failed` ou `refused`. O worker não executa verificações.
+
+Executável ausente detectado na checagem prévia é recusado antes do despacho. Se a
+criação do processo falhar depois do despacho apesar dessa checagem, não há código
+de saída de filho para registrar: o comando recusa e a tentativa fica `running`.
+A recuperação exige `runtime.resume(..., still_in_progress=provider)` da biblioteca
+com provedor explícito de atividade confirmando que o trabalho não está mais em
+andamento. O CLI não fornece esse provedor; não há timeout automático de órfão nem
+retry automático.
 
 **O modelo inverso** continua de primeira classe, e é o jeito de fixar um nó a um
 comando exato:
@@ -341,9 +373,9 @@ argumento, e o arquivo em `$OUT` como prova.
 
 ### 5.5 Custo
 
-O DAGWELL não gasta nada. **Seu `x_command` gasta.** Cada nó despachado é uma chamada
-paga ou uma cota consumida, e o motor não tem modelo de orçamento — a §13.12 está
-aberta e nenhuma fórmula foi inventada.
+**O comando invocado determina o custo**, lançado por `work --go` ou por um runner
+externo de `x_command`. Pode consumir cota de provedor; comandos determinísticos
+locais podem ser gratuitos. O motor não tem modelo de orçamento — §13.12 segue aberta.
 
 Consequências práticas:
 
@@ -373,7 +405,8 @@ outro é só o `x_command`.
 |---|---|
 | `demo` | ciclo completo numa pasta temporária, narrado. Não precisa de ledger |
 | `start` | valida o grafo, congela a identidade, cria o run. Imprime o id |
-| `ready` | nós que a topologia desbloqueou |
+| `ready` | nós despacháveis após validar identidade e integridade do run |
+| `work` | planeja despachos por capacidade; `--go` executa com o adapter subprocess |
 | `status` | a projeção: estado do run, cada nó, anomalias |
 | `dispatch` | registra que um nó foi entregue (**não o executa**) |
 | `return` | registra o retorno do transporte e, quando houve, a evidência |
@@ -414,7 +447,9 @@ guarda os erros como dado histórico.
 
 `(integrity: degraded)` significa que o fold não pode atestar a identidade deste run
 — um buraco no `seq`, ou nenhum `run_created` autoritativo. O run continua
-**legível**, mas toda mutação é recusada até um humano reconciliar.
+**legível**, mas toda mutação é recusada. A reconciliação de lacunas de sequência
+continua uma especificação aberta; esta versão não oferece comando de reparo,
+e editar o ledger não é recuperação.
 
 ## 8. Quando algo é recusado
 
@@ -440,14 +475,17 @@ ou o ledger — conserte isso, não o guarda.
 |---|---|
 | `run.jsonl` | o ledger: todos os eventos, append-only, um objeto JSON por linha |
 | `graphs/` | snapshots de grafo congelado, endereçados por hash de conteúdo |
+| `<data-dir>/runs/<operation>/<run_id>/<node_id>/t<k>/` | artefatos imutáveis de tentativa criados pelo worker; `$OUT` é o caminho absoluto de `out` nessa pasta |
+| `.<ledger-name>.<run-hash>.work.lock` ao lado do ledger | inode da trava local de piloto, preservado após a saída; não armazena estado do run |
 
-Nunca edite nem apague nenhum dos dois. Estado é um fold determinístico do ledger:
+Preserve ledgers, snapshots congelados e artefatos de tentativa. Estado é um fold
+determinístico do ledger:
 remover uma linha é mudar a história, não consertar. O checkpoint é sempre
 recalculado dos eventos, então adulterar um cache não muda nada além da prova da
 adulteração.
 
-Os dois caminhos são seus — versione, faça backup ou mantenha privado, conforme o
-trabalho exigir.
+Mantenha esses arquivos de execução na área privada de dados, fora do repositório
+público do produto, e faça backup conforme o trabalho exigir.
 
 ## 10. Usando a biblioteca em vez do CLI
 

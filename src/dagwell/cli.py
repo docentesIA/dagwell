@@ -6,10 +6,9 @@ invariant lives here: the human-only write privilege and every precondition are
 enforced below, in the domain layer and the ledger (I8). Display strings may be
 localized in the future; canonical identifiers never are (H1).
 
-Nothing in this file dispatches work to a provider or spends anything.
-`dispatch` records that a node was HANDED OUT; the work itself happens by
-whatever means the operator already uses, and `return` records what came back.
-Transport belongs to the Adapter milestone, not here.
+`dispatch` records that a node was HANDED OUT without running it. `work --go`
+delegates actual execution to the capability worker; this presentation layer
+does not own transport or verification authority.
 """
 
 import argparse
@@ -255,10 +254,9 @@ def main(argv=None) -> int:
                     ledger, graph, args.run, registry, args.data_dir,
                     operation=args.operation, node_id=args.node, go=True)
             else:
-                results = worker.plan(graph, ledger, args.run, registry)
-                if args.node:
-                    results = [r for r in results
-                               if r["node_id"] == args.node]
+                results = worker.work(
+                    ledger, graph, args.run, registry, args.data_dir,
+                    operation=args.operation, node_id=args.node, go=False)
             executed_any = False
             for r in results:
                 if r["action"] == "dispatch":
@@ -266,8 +264,8 @@ def main(argv=None) -> int:
                     print(f"{r['node_id']} (attempt {r['attempt']}, tier "
                           f"{r['tier']}) -> {sel['binding_id']}/"
                           f"{sel['model_id']} [{sel['family']}]")
-                elif r["action"] in ("executed", "failed"):
-                    executed_any = True
+                elif r["action"] in ("executed", "failed", "completed"):
+                    executed_any = executed_any or r["action"] == "executed"
                     print(f"{r['node_id']} (attempt {r['attempt']}): "
                           f"{r['action']} — exit {r['exit_code']}, "
                           f"evidence {r['evidence_id'] or 'none'}")
@@ -281,6 +279,8 @@ def main(argv=None) -> int:
             elif executed_any:
                 print("verifications are now due in contract order — see "
                       "status / request-verification / verdict / decide.")
+            if any(r['action'] in ('failed', 'refused') for r in results):
+                return 1
         elif args.command == "request-verification":
             _emit(operations.request_verification(
                 ledger, graph, args.run, args.node,

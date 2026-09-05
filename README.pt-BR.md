@@ -36,7 +36,7 @@ git clone https://github.com/docentesIA/dagwell.git && cd dagwell
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 python3 tools/check_contracts.py    # o contrato promovido ainda tem o hash de promovido
-python3 tools/run_tests.py          # 146 casos, custo zero, sem rede
+python3 tools/run_tests.py          # suíte descoberta dinamicamente, custo zero, sem rede
 ```
 
 Depois veja tudo funcionando, sem precisar preparar nada:
@@ -50,9 +50,12 @@ dagwell demo
 **Existe um adapter: `subprocess`.** O nó declara um tier de dificuldade e uma
 mission; um registry de bindings (dado SEU, fora deste repositório) declara quais
 CLIs e modelos servem quais tiers a que custo relativo; `dagwell work --go` faz o
-probe, escolhe o modelo mais barato que satisfaz o tier — a dificuldade dita o
-modelo; tarefa simples nunca queima modelo de fronteira —, executa e registra a
-evidência do que de fato pousou no disco. Transportes remotos, execução
+probe, escolhe o modelo declarado mais barato que satisfaz o tier, executa o binding
+e registra a evidência do que de fato pousou no disco. **Bloqueio conhecido da
+versão:** o transporte v1.0 não passa o modelo selecionado à invocação; a seleção
+registrada não prova qual modelo o CLI usou. A
+[proposta v1.1](docs/contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1-RC1.md)
+aguarda aprovação humana e não está implementada. Transportes remotos, execução
 automática de verificadores e qualquer modelo de retry/orçamento continuam à
 frente, cada um atrás do próprio portão.
 
@@ -207,12 +210,11 @@ O que o torna conferível não é quem digitou:
   do produtor. As duas devolveram REWORK REQUIRED.
 - **Cada achado foi reproduzido** no interpretador antes de virar correção. Duas
   afirmações não sobreviveram à reprodução e foram descartadas — uma de cada auditor.
-- **A suíte reporta 146 casos em 13 arquivos, 47 deles adversariais** (a matriz
-  T1–T22 mais a cobertura de hardening), cada um escrito para falhar se um buraco
-  específico reabrir. Só biblioteca padrão, sem rede, sem cota:
-  `python3 tools/run_tests.py` imprime as mesmas contagens para quem rodar.
-- **Os achados que NÃO foram corrigidos estão escritos nas mensagens de commit**, não
-  omitidos. Dois seguem abertos e são acompanhados como issues.
+- **A suíte de custo zero descobre os arquivos de teste dinamicamente**, incluindo
+  a matriz T1–T22, hardening e regressões. Só biblioteca padrão, sem rede, sem cota:
+  `python3 tools/run_tests.py` informa os resultados atuais.
+- **Achados abertos continuam documentados.** Nesta candidata, invocar o modelo
+  selecionado depende da decisão humana sobre a especificação vinculada acima.
 
 Nada disso torna o código correto. Torna as afirmações sobre ele conferíveis, que é o
 máximo que um repositório pode honestamente oferecer.

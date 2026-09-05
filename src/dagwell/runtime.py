@@ -3,7 +3,7 @@ orphan observation, resume (contract §1, §3, §4, §8, §10).
 
 All operational mutations route through the governed boundary
 (dagwell.operations; human decisions through dagwell.human). No transports
-exist yet (adapters are Phase 8/9); nothing here executes work or spends.
+are executed here; the capability worker lives at the adapter edge.
 With no Runtime Policy Specification (§13.12) automatic retry/re-fire is
 DISABLED — fail-closed: verifier error/timeout/orphaned outcomes escalate to
 the human; interruption-cancelled verifications re-fire without policy burn
@@ -73,7 +73,9 @@ def extend_budget(ledger: Ledger, graph: dict, run_id: str, new_budget,
 
 
 def ready_nodes(graph: dict, ledger: Ledger, run_id: str) -> list[tuple]:
-    folded = fold(graph, ledger.run(run_id), run_id)
+    # Planning must not grant authority to a missing/damaged run. Completed
+    # runs are valid reads and simply have no ready work.
+    folded, _ = operations._guard(ledger, graph, run_id, allow_completed=True)
     return [(nid, (i["attempt"] or 0) + 1)
             for nid, i in folded["nodes"].items() if i["state"] == "ready"]
 

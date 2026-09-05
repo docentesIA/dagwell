@@ -1,7 +1,8 @@
 # Relato de campo: um motor, três mundos
 
-> Primeiro dia de uso real em produção, 2026-08-31. Tudo abaixo aconteceu contra
-> ledgers vivos; nada é simulação. Detalhes de infraestrutura (hosts, chaves,
+> Relato histórico de 2026-08-31, com notas da revisão de confiabilidade para a
+> próxima candidata. Os relatos de produção são distintos dos testes de regressão
+> de custo zero mencionados abaixo. Detalhes de infraestrutura (hosts, chaves e
 > identificadores de canal) foram omitidos de propósito.
 >
 > *Tradução informativa — o original canônico é [THREE-WORLDS.md](THREE-WORLDS.md).*
@@ -73,6 +74,12 @@ O que o DAGWELL acrescenta:
 - **Seleção com recusa honesta.** `trivial` vai para o binding mais barato
   capaz; se ninguém serve o tier, o motor recusa *antes* do gasto e diz por quê.
 
+A revisão da candidata encontrou um limite importante: v1.0 registra o modelo
+selecionado, mas não o passa à invocação do CLI. Essas observações, portanto,
+não demonstram qual modelo atendeu cada tier. A
+[proposta v1.1-RC1](contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1-RC1.md)
+trata dessa lacuna e ainda exige aprovação humana antes da implementação.
+
 ## Mundo três — um agente autônomo com casa própria
 
 Um agente residente com usuário próprio sem privilégios, diretório próprio e
@@ -95,11 +102,27 @@ O que o DAGWELL acrescenta, nas duas direções:
 
 ## Disciplina operacional que nasceu no primeiro dia
 
-- **Um piloto por run.** Dois loops de `work --go` no mesmo run pagam a mesma
-  missão duas vezes. Um wrapper com trava de arquivo já barra o segundo piloto
-  com mensagem clara; a trava nativa no `work` está no roadmap.
-- **Run fantasma recusado.** Run id ausente do ledger deve ser rejeitado antes
-  de qualquer coisa — descoberto em teste, proposto como fail-closed nativo.
+- **Um piloto por run.** Houve relato de gasto duplicado no primeiro dia, que
+  motivou um wrapper. A revisão da candidata não reproduziu despacho duplicado
+  simples: as proteções existentes do ledger já recusam a tentativa repetida.
+  Foi identificada outra corrida, entre plano antigo de worker e retry autorizado
+  por humano. O worker agora vincula despacho à tentativa esperada e usa trava
+  separada de piloto por run; o segundo worker é recusado sem reter a trava do
+  ledger nem bloquear `status`. É coordenação local, sem garantia de execução
+  distribuída.
+- **Run fantasma recusado.** O worker anterior planejava run inexistente, mas o
+  despacho governado já recusava criar essa execução. A candidata antecipa a
+  recusa para antes dos probes e diretórios de tentativa em `work`/`plan`/`ready`,
+  verificando também identidade congelada e integridade degradada. `status`
+  preserva o diagnóstico dos históricos danificados suportados.
+
+A candidata também define o diretório de trabalho do subprocesso como uma pasta
+nova da tentativa, fornece `$OUT` absoluto e recusa sobrescrever tentativa
+existente. Wrappers externos que trocam usuário ou diretório intencionalmente
+continuam sob responsabilidade do operador. Os resultados do worker agora refletem
+o fold, incluindo falha por timeout com exit 0 e conclusão imediata com dispensa
+explícita válida de verificação. Consulte o [Manual de uso](USAGE.pt-BR.md) para
+detalhes de operação e recuperação.
 
 ## Próximo: DAGWELL como agente ACP
 

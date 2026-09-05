@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dagwell"
-version = "0.0.1"
+version = "0.0.2rc1"
 description = "Provider-agnostic orchestration engine: governed graphs over an event-sourced, append-only ledger."
 readme = "README.md"
 license = "Apache-2.0"

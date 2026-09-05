@@ -114,7 +114,9 @@ def _check_request(event, run_events):
     returned = _return_for(run_events, node_id, attempt)
     # §4: only an `executed` attempt enters verification — successful
     # transport AND required evidence. Neither half alone opens the gate.
-    if returned is not None and returned.get("exit_code") != 0:
+    if returned is not None and (
+            returned.get("exit_code") != 0
+            or returned.get("transport", {}).get("timed_out", False)):
         raise ev.EventValidationError(
             "verification_requested for an attempt whose transport failed — "
             "unsuccessful transport never reaches executed (§4)")

@@ -30,7 +30,7 @@ git clone https://github.com/docentesIA/dagwell.git && cd dagwell
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 python3 tools/check_contracts.py    # the promoted contract still hashes as promoted
-python3 tools/run_tests.py          # 146 cases, zero cost, no network
+python3 tools/run_tests.py          # dynamically discovered suite, zero cost, no network
 ```
 
 Then see the whole thing work, with nothing to set up:
@@ -44,9 +44,12 @@ dagwell demo
 **One adapter exists: `subprocess`.** A node declares a difficulty tier and a
 mission; a binding registry (your data, not this repo) declares which CLIs and
 models serve which tiers at what relative cost; `dagwell work --go` probes,
-selects the cheapest model that satisfies the tier — difficulty dictates the
-model, a simple task never burns a frontier model — executes, and records the
-evidence of what actually landed on disk. Remote transports, automatic
+selects the cheapest declared model that satisfies the tier, executes the binding,
+and records the evidence of what actually landed on disk. **Known release blocker:**
+the v1.0 transport does not pass the selected model to the invocation; its recorded
+selection does not prove which model the CLI used. The
+[v1.1 proposal](docs/contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1-RC1.md)
+awaits human approval and is not implemented. Remote transports, automatic
 verification execution, and any retry/budget model remain ahead, each behind
 its own gate.
 
@@ -206,12 +209,11 @@ What makes it checkable is not who typed it:
   producer's family. Both returned REWORK REQUIRED.
 - **Every finding was reproduced** in the interpreter before being acted on. Two
   claims did not survive reproduction and were discarded — one from each auditor.
-- **The suite reports 146 cases across 13 files, 47 of them adversarial** (the
-  T1-T22 matrix plus the hardening coverage), each written to fail if a specific
-  hole reopens. Stdlib only, no network, no quota: `python3 tools/run_tests.py`
-  prints the same counts for anyone who runs it.
-- **The findings that were NOT fixed are written into the commit messages**, not
-  omitted. Two remain open and are tracked as issues.
+- **The zero-cost suite discovers test files dynamically**, including the T1-T22
+  matrix, hardening coverage and regression checks. Stdlib only, no network, no
+  quota: `python3 tools/run_tests.py` reports the current results.
+- **Open findings remain documented.** In this candidate, selected-model invocation
+  requires the human-gated specification decision linked above.
 
 None of that makes the code correct. It makes the claims about it checkable, which
 is the most any repository can honestly offer.

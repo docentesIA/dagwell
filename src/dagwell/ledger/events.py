@@ -77,7 +77,7 @@ def run_created_event(*, graph_id: str, graph_version: str, input_hash: str,
     return {
         "schema_version": SCHEMA_VERSION,
         "event_id": ids.new_event_id(),
-        "run_id": run_id or ids.new_run_id(),
+        "run_id": ids.new_run_id() if run_id is None else run_id,
         "event_type": "run_created",
         "occurred_at": occurred_now(),
         "graph_id": graph_id,
@@ -88,14 +88,22 @@ def run_created_event(*, graph_id: str, graph_version: str, input_hash: str,
     }
 
 
-def validate_event(event: dict) -> None:
-    """Hard write validation: refuse before recording (contract §9, I20)."""
+def validate_event(event: dict, *, for_write: bool = True) -> None:
+    """Validate fields; enforce current run_id encoding only on new writes.
+
+    Historical reads preserve identifiers verbatim rather than migrating or
+    silently discarding older records (ADR-0002, contract I2).
+    """
     for field in ENVELOPE_FIELDS:
         if field not in event:
             raise EventValidationError(f"missing envelope field: {field}")
     for field in ("schema_version", "event_id", "run_id", "occurred_at"):
         if not isinstance(event[field], str) or not event[field]:
             raise EventValidationError(f"{field} must be a non-empty string")
+    if (for_write and not ids.is_legacy(event["run_id"])
+            and not ids.is_canonical_run_id(event["run_id"])):
+        raise EventValidationError(
+            "run_id must be canonical lowercase hyphenated UUIDv7 (ADR-0002)")
     # The writer only ever emits the schema it implements. Accepting another
     # version here would launder an event this code cannot interpret into the
     # record; on READ such an event stays inert and signaled (ADR-0004),
@@ -118,6 +126,13 @@ def validate_event(event: dict) -> None:
             ec = event.get("exit_code")
             if not isinstance(ec, int) or isinstance(ec, bool):
                 raise EventValidationError(f"invalid exit_code: {ec!r}")
+            if "transport" in event:
+                transport = event["transport"]
+                if not isinstance(transport, dict):
+                    raise EventValidationError("transport must be an object")
+                if ("timed_out" in transport
+                        and not isinstance(transport["timed_out"], bool)):
+                    raise EventValidationError("transport.timed_out must be boolean")
     if event["event_type"] in ("verification_requested", "verdict_recorded"):
         validate_verification_fields(event)
     if event["event_type"] == "run_landed":

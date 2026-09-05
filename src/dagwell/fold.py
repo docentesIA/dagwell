@@ -2,7 +2,7 @@
 
 events + frozen graph -> projected state. Pure: no I/O, no clock, no policy —
 the projection uses only facts materialized in events (I3). Ordering is seq,
-never timestamps (I20). seq collision refuses computation (fail closed);
+never timestamps (I20). seq collision/regression refuses computation (fail closed);
 duplicate event_id keeps the first by seq authoritative and flags the rest;
 an unresolved seq gap yields a DIAGNOSTIC projection marked
 integrity: "degraded" — a derived view, never persisted state (P3/I27); the
@@ -27,9 +27,16 @@ def fold(graph: dict, events: list[dict], run_id: str) -> dict:
     anomalies: list[str] = []
 
     seqs = [e.get("seq") for e in revents]
+    if any(not isinstance(seq, int) or isinstance(seq, bool)
+           or seq < ev.FIRST_SEQ for seq in seqs):
+        raise ev.LedgerIntegrityError(
+            f"run {run_id}: invalid seq — fold refuses to compute (I20)")
     if len(seqs) != len(set(seqs)):
         raise ev.LedgerIntegrityError(
             f"run {run_id}: seq collision — fold refuses to compute (I20)")
+    if any(current < previous for previous, current in zip(seqs, seqs[1:])):
+        raise ev.LedgerIntegrityError(
+            f"run {run_id}: seq regression — fold refuses to compute (I20)")
     revents.sort(key=lambda e: e["seq"])
 
     # duplicate event_id: first by seq authoritative, later ignored + flagged
@@ -161,7 +168,8 @@ def _attempt_state(graph, node_id, k, nevents):
 
     etype = declared_evidence_type(graph, node_id)
     evd = returned.get("output_evidence")
-    transport_ok = returned.get("exit_code") == 0
+    transport_ok = (returned.get("exit_code") == 0
+                    and not returned.get("transport", {}).get("timed_out", False))
     evidence_ok = evd is not None and evidence_is_valid(evd, etype)
     if not (transport_ok and evidence_ok):
         return "failed"
@@ -294,6 +302,8 @@ def _normalize(revents, anomalies):
     normalized = []
     requests = []      # accepted verification_requested events
     escalations = []   # accepted human_escalation events
+    closed_verifications = set()
+    completed_verifications = set()
     for e in revents:
         seq = e.get("seq")
         if e.get("schema_version") != ev.SCHEMA_VERSION:
@@ -302,7 +312,7 @@ def _normalize(revents, anomalies):
                 f"event inert (seq {seq})")
             continue
         try:
-            ev.validate_event(e)
+            ev.validate_event(e, for_write=False)
         except ev.EventValidationError as exc:
             anomalies.append(f"malformed event inert (seq {seq}): {exc}")
             continue
@@ -312,6 +322,17 @@ def _normalize(revents, anomalies):
         elif etype == "human_escalation":
             escalations.append(e)
         elif etype == "verdict_recorded":
+            identity = (e["node_id"], e["attempt"], e["verification_id"])
+            attempt_key = (*identity, e["verification_attempt"])
+            evidence_key = (*identity, e["evidence_id"])
+            if attempt_key in closed_verifications:
+                anomalies.append(
+                    f"outcome for closed verification_attempt — inert (seq {seq})")
+                continue
+            if evidence_key in completed_verifications:
+                anomalies.append(
+                    f"non-authoritative verification outcome — inert (seq {seq})")
+                continue
             req = next(
                 (r for r in requests
                  if r.get("node_id") == e.get("node_id")
@@ -345,5 +366,8 @@ def _normalize(revents, anomalies):
                         f"human substitution without human_escalation — "
                         f"inert (seq {seq})")
                     continue
+            closed_verifications.add(attempt_key)
+            if e["verification_status"] == "completed":
+                completed_verifications.add(evidence_key)
         normalized.append(e)
     return normalized
