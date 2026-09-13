@@ -8,6 +8,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from dagwell import operations
 from dagwell.adapters import worker
 from dagwell.adapters.registry import load_registry
 from dagwell.fold import fold
@@ -87,11 +88,50 @@ def test_go_executes_with_derived_evidence_and_transport_facts():
         assert dispatched["transport"] == {
             "binding_id": "py-cli", "model_id": "cheap",
             "family": "anthropic-claude", "transport": "subprocess",
-            "registry_digest": reg["registry_digest"]}
+            "registry_digest": reg["registry_digest"],
+            "selected_relative_cost": 1,                       # ADR-0011
+            "selection_reason": "lowest_relative_cost_serving_tier"}
         returned = next(e for e in led.run(rid)
                         if e["event_type"] == "node_returned")
         assert returned["output_evidence"]["evidence_id"] == r["evidence_id"]
         assert returned["transport"]["timed_out"] is False
+
+
+def test_selection_metadata_reaches_ledger_but_never_the_subprocess():
+    """ADR-0011: selected_relative_cost/selection_reason land in
+    node_dispatched.transport but are never forwarded as subprocess
+    arguments — only model_id is (spec v1.1)."""
+    capture_argv = ("import json,os,sys\n"
+                    "open(os.environ['OUT'],'w').write(json.dumps(sys.argv[1:]))")
+    with tempfile.TemporaryDirectory() as tmp:
+        led, graph, rid, reg = _setup(tmp, _graph_text(mission=capture_argv))
+        (r,) = worker.work(led, graph, rid, reg, tmp, go=True)
+        assert r["action"] == "executed"
+        argv = json.loads((Path(r["attempt_dir"]) / worker.OUT_NAME).read_text())
+        assert argv == ["cheap"]                       # only model_id reaches argv
+        dispatched = next(e for e in led.run(rid)
+                          if e["event_type"] == "node_dispatched")
+        assert dispatched["transport"]["selected_relative_cost"] == 1
+        assert dispatched["transport"]["selection_reason"] == \
+            "lowest_relative_cost_serving_tier"
+
+
+def test_historical_dispatch_without_new_fields_folds_the_same():
+    """A node_dispatched.transport written before ADR-0011 (no
+    selected_relative_cost/selection_reason) remains valid and folds
+    identically to a modern one — the fold never reads either field."""
+    old_transport = {"binding_id": "py-cli", "model_id": "cheap",
+                     "family": "anthropic-claude", "transport": "subprocess",
+                     "registry_digest": "sha256:old"}
+    new_transport = dict(old_transport, selected_relative_cost=1,
+                         selection_reason="lowest_relative_cost_serving_tier")
+    states = {}
+    for label, transport in (("old", old_transport), ("new", new_transport)):
+        with tempfile.TemporaryDirectory() as tmp:
+            led, graph, rid, reg = _setup(tmp, _graph_text())
+            operations.dispatch(led, graph, rid, "task", transport=transport)
+            states[label] = fold(graph, led.run(rid), rid)["nodes"]["task"]["state"]
+    assert states["old"] == states["new"] == "running"
 
 
 def test_liar_mission_lands_failed_not_executed():

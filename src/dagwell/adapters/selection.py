@@ -43,4 +43,8 @@ def select(tier: str, registry: dict, available=None) -> dict:
         "family": model["family"],
         "transport": binding["transport"],
         "registry_digest": registry["registry_digest"],
+        # ADR-0011: observability only — relative_cost as declared by the
+        # registry, verbatim; no monetary semantics, no fold interpretation.
+        "selected_relative_cost": cost,
+        "selection_reason": "lowest_relative_cost_serving_tier",
     }

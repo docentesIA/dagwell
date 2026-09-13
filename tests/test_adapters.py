@@ -113,6 +113,38 @@ def test_selection_refuses_before_spend():
     _expect(SelectionError, select, "standard", reg, set())   # none available
     _expect(SelectionError, select, "trivial", reg, {"codex-cli"})
     _expect(SelectionError, select, "epic", reg)              # unknown tier
+    # refusal raises — no metadata dict is ever produced on this path
+    # (ADR-0011: selected_relative_cost/selection_reason).
+
+
+# == ADR-0011 — selection observability metadata ============================
+
+def test_selection_returns_relative_cost_and_reason():
+    reg = load_registry(json.dumps(REGISTRY))
+    chosen = select("simple", reg)
+    assert chosen["selected_relative_cost"] == 1        # haiku's own registry value
+    assert chosen["selection_reason"] == "lowest_relative_cost_serving_tier"
+    # frontier: only opus (25) serves it — cost tracks the actual winner.
+    assert select("frontier", reg)["selected_relative_cost"] == 25
+
+
+def test_selection_metadata_under_tie_and_reversed_registry_order():
+    reg = load_registry(json.dumps(REGISTRY))
+    # tie between (claude-cli, haiku) and (codex-cli, default), both cost 1;
+    # restricting `available` to codex-cli picks it without changing the
+    # reason code — availability narrows candidates, it is not a new policy.
+    tied = select("simple", reg, available={"codex-cli"})
+    assert tied["binding_id"] == "codex-cli"
+    assert tied["selected_relative_cost"] == 1
+    assert tied["selection_reason"] == "lowest_relative_cost_serving_tier"
+    # reversed bindings order in the registry must not change the outcome.
+    reversed_data = json.loads(json.dumps(REGISTRY))
+    reversed_data["bindings"].reverse()
+    reversed_reg = load_registry(json.dumps(reversed_data))
+    same = select("simple", reversed_reg)
+    assert (same["binding_id"], same["model_id"]) == ("claude-cli", "haiku")
+    assert same["selected_relative_cost"] == 1
+    assert same["selection_reason"] == "lowest_relative_cost_serving_tier"
 
 
 def test_graph_capability_requirements():
