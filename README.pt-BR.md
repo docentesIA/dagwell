@@ -55,9 +55,10 @@ e registra a evidência do que de fato pousou no disco. Pela
 [v1.1, aprovada em 2026-09-04](docs/contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1.md),
 `{model_id}` passa a seleção como um argumento da invocação e é obrigatório em
 bindings com múltiplos modelos. Bindings literais de um só modelo continuam sendo
-declarações do operador, não atestados do provedor. Transportes remotos, execução
-automática de verificadores e qualquer modelo de retry/orçamento continuam à
-frente, cada um atrás do próprio portão.
+declarações do operador, não atestados do provedor. Desde a 0.0.3 o piloto
+(`dagwell advance`) também executa os verificadores que o grafo declara, como
+subprocessos, e para no gate humano. Transportes remotos e qualquer modelo de
+retry/orçamento continuam à frente, cada um atrás do próprio portão.
 
 O modelo inverso continua de primeira classe, e continua sendo a parte que vale
 entender: **você faz o trabalho, o DAGWELL governa.** Você (um script, uma pessoa, um agente, um job de CI) executa o
@@ -69,17 +70,20 @@ só a partir dos eventos.
 |---|---|
 | Declarar um grafo; validação fail-closed antes de qualquer gasto | Transportes remotos (http, sdk, mcp, a2a) |
 | Iniciar um run com identidade de grafo congelada | Política de retry ou modelo de orçamento |
-| Despachar para CLIs locais por tier de dificuldade (`dagwell work --go`) | Execução automática de verificação |
-| Registrar despacho e retorno; recusar evidência malformada na fronteira | Persistência de sessão por plataforma |
+| Despachar para CLIs locais por tier de dificuldade (`dagwell work --go`) | Persistência de sessão por plataforma |
+| Registrar despacho e retorno; recusar evidência malformada na fronteira | Constatação de órfão pela CLI (§13.4 em aberto) |
 | Pedir verificações na ordem do contrato; registrar veredito de máquina | |
+| Executar os verificadores que o grafo declara (`x_verifier`) e conduzir o laço inteiro até o gate humano (`dagwell advance --go`) | |
+| Diagnosticar uma configuração antes de gastar (`dagwell doctor`) | |
 | Gates humanos: aprovar, reprovar, retentar, escalar, cancelar | |
 | Aterrissar um run; retomar após interrupção; detectar órfãos | |
 | Estado determinístico via `fold`; checkpoint à prova de adulteração | |
 
-O CLI conduz o ciclo inteiro — `start`, `ready`, `dispatch`, `return`,
-`request-verification`, `verdict`, `decide`, `human-retry`, `land`, `resume`,
-`cancel`, `status` — então você nunca precisa escrever Python para usá-lo. As mesmas
-operações existem como biblioteca. **[Manual completo: docs/USAGE.pt-BR.md](docs/USAGE.pt-BR.md)**.
+O CLI conduz o ciclo inteiro — `doctor`, `start`, `advance`, `ready`, `dispatch`,
+`return`, `request-verification`, `verdict`, `decide`, `human-retry`, `land`,
+`resume`, `cancel`, `status` — então você nunca precisa escrever Python para usá-lo;
+`examples/template-report/` é o fluxo copiável. As mesmas operações existem como
+biblioteca. **[Manual completo: docs/USAGE.pt-BR.md](docs/USAGE.pt-BR.md)**.
 
 ## Relato de campo: um motor, três mundos
 
@@ -213,9 +217,13 @@ O que o torna conferível não é quem digitou:
 - **A suíte de custo zero descobre os arquivos de teste dinamicamente**, incluindo
   a matriz T1–T22, hardening e regressões. Só biblioteca padrão, sem rede, sem cota:
   `python3 tools/run_tests.py` informa os resultados atuais.
-- **Mudanças e limites continuam documentados** na
-  [revisão da versão 0.0.2](docs/RELEASE-0.0.2.md). A emenda de invocação de modelo
-  passou pelo gate humano; a publicação ainda exige aprovação final separada.
+- **Mudanças e limites continuam documentados** por versão:
+  [0.0.3](docs/RELEASE-0.0.3.md) (camada piloto, verificadores declarados) e
+  [0.0.2](docs/RELEASE-0.0.2.md) (confiabilidade de worker e ledger). Cada versão passa
+  por um gate humano antes de receber tag e push.
+- **Numeração de versão** segue o [ADR-0012](docs/decisions/ADR-0012-public-version-numbering.md):
+  versões públicas são só `0.0.n`, um incremento por publicação, tag `v0.0.n`;
+  sufixos `rc` existem apenas como controle interno de candidata e nunca são publicados.
 
 Nada disso torna o código correto. Torna as afirmações sobre ele conferíveis, que é o
 máximo que um repositório pode honestamente oferecer.

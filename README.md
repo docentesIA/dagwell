@@ -49,7 +49,7 @@ and records the evidence of what actually landed on disk. Under
 [v1.1, approved on 2026-09-04](docs/contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1.md),
 `{model_id}` passes the selection as one invocation argument and is mandatory for
 multimodel bindings. Literal single-model bindings remain operator declarations,
-not provider attestations. Since 0.0.3rc1 the pilot (`dagwell advance`) also runs
+not provider attestations. Since 0.0.3 the pilot (`dagwell advance`) also runs
 the verifiers a graph declares as subprocesses and stops at the human gate.
 Remote transports and any retry/budget model remain ahead, each behind its own
 gate.
@@ -216,9 +216,13 @@ What makes it checkable is not who typed it:
 - **The zero-cost suite discovers test files dynamically**, including the T1-T22
   matrix, hardening coverage and regression checks. Stdlib only, no network, no
   quota: `python3 tools/run_tests.py` reports the current results.
-- **Changes and limits remain documented** in the
-  [0.0.2 release review](docs/RELEASE-0.0.2.md). The model-invocation amendment passed
-  its human gate; publication still requires a separate final approval.
+- **Changes and limits remain documented** per release:
+  [0.0.3](docs/RELEASE-0.0.3.md) (pilot layer, declared verifiers) and
+  [0.0.2](docs/RELEASE-0.0.2.md) (worker and ledger reliability). Each release passes
+  a human gate before it is tagged and pushed.
+- **Versioning** follows [ADR-0012](docs/decisions/ADR-0012-public-version-numbering.md):
+  public versions are `0.0.n` only, one increment per publication, tagged `v0.0.n`;
+  `rc` suffixes exist only as internal candidate control and are never published.
 
 None of that makes the code correct. It makes the claims about it checkable, which
 is the most any repository can honestly offer.

@@ -1,6 +1,11 @@
 # DAGWELL 0.0.3rc1 — operational closure, release candidate
 
-Status: **0.0.3rc1, local candidate; not tagged, not pushed, not published.**
+Status: **historical record of the candidate.** Reviewed and committed as `eeb73a3`
+on `main`, then promoted to **0.0.3** — see [RELEASE-0.0.3.md](RELEASE-0.0.3.md) for the
+public notes and the current rollback. The *Rollback* section below describes the
+state **before** that commit (an uncommitted working tree) and is kept as written.
+Per [ADR-0012](decisions/ADR-0012-public-version-numbering.md), `rc` numbers are
+internal candidate control only; no `v0.0.3rc1` tag exists or will exist.
 Built on `05a79f4` (0.0.2 + adaptive-routing design notes + ADR-0011). The
 governed core, the contracts and the promoted specifications are unchanged;
 `tools/check_contracts.py` still verifies the three promoted documents byte for
