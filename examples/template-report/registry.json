@@ -1,0 +1,17 @@
+{
+  "registry_version": 1,
+  "bindings": [
+    {
+      "binding_id": "local-python",
+      "transport": "subprocess",
+      "platform": "python",
+      "invocation": "python3 -c {mission}",
+      "probe": "python3 --version",
+      "timeout_seconds": 120,
+      "models": [
+        {"model_id": "python3", "family": "local-python",
+         "tiers": ["trivial", "simple"], "relative_cost": 1}
+      ]
+    }
+  ]
+}

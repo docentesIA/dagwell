@@ -85,21 +85,31 @@ def _artifact_evidence_from_disk(adir, out_name: str):
 
 def work(ledger, graph: dict, run_id: str, registry: dict, data_dir, *,
          operation: str | None = None, node_id: str | None = None,
-         env=None, go: bool = False) -> list[dict]:
-    """Process READY capability nodes. go=False plans; go=True SPENDS."""
+         env=None, go: bool = False, locked: bool = False,
+         stop_requested=None) -> list[dict]:
+    """Process READY capability nodes. go=False plans; go=True SPENDS.
+
+    `locked=True` declares that the caller already holds `pilot_lock` for
+    this run (the pilot's advance loop does); the lock is then not re-taken.
+    `stop_requested()` true before a dispatch leaves that node untouched
+    (graceful interruption, §10(a): no new dispatch once asked to stop).
+    """
     # Validate before creating even a lock file. A separate pilot lock never
     # holds the ledger lock across subprocess execution: status stays readable.
     runtime.ready_nodes(graph, ledger, run_id)
-    if not go:
+    if not go or locked:
         return _work(ledger, graph, run_id, registry, data_dir,
-                     operation=operation, node_id=node_id, env=env, go=False)
-    with _pilot_lock(ledger, run_id):
+                     operation=operation, node_id=node_id, env=env, go=go,
+                     stop_requested=stop_requested)
+    with pilot_lock(ledger, run_id):
         return _work(ledger, graph, run_id, registry, data_dir,
-                     operation=operation, node_id=node_id, env=env, go=True)
+                     operation=operation, node_id=node_id, env=env, go=True,
+                     stop_requested=stop_requested)
 
 
 @contextmanager
-def _pilot_lock(ledger, run_id):
+def pilot_lock(ledger, run_id):
+    """One pilot per run per ledger: nonblocking flock on a retained inode."""
     key = hashlib.sha256(run_id.encode('utf-8')).hexdigest()
     ledger_path = ledger.path.resolve()
     lock = ledger_path.with_name(f'.{ledger_path.name}.{key}.work.lock')
@@ -116,7 +126,7 @@ def _pilot_lock(ledger, run_id):
 
 
 def _work(ledger, graph, run_id, registry, data_dir, *, operation=None,
-          node_id=None, env=None, go=False):
+          node_id=None, env=None, go=False, stop_requested=None):
     env = dict(env if env is not None else os.environ)
     operation = operation or graph["graph_id"]
     if node_id is not None:
@@ -139,6 +149,12 @@ def _work(ledger, graph, run_id, registry, data_dir, *, operation=None,
         p = _plan_node(node, registry, available)
         p["attempt"] = attempt
         if p["action"] != "dispatch" or not go:
+            results.append(p)
+            continue
+        if stop_requested is not None and stop_requested():
+            p.update(action="not_started",
+                     reason="interrupt requested before this dispatch; it "
+                            "stays ready for the next --go")
             results.append(p)
             continue
 

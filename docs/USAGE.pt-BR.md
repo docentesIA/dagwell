@@ -388,6 +388,138 @@ Consequências práticas:
 - `dagwell land --reason budget_exhausted` existe justamente para parar sem truncar
   trabalho: o que estava em voo continua registrado, e o `resume` retoma do ponto.
 
+### 5.7 Verificadores declarados: `x_verifier`
+
+O worker nunca roda verificações; o **piloto** (`dagwell advance`) roda as que o
+grafo declara. Uma verificação pode carregar um campo de operador, no mesmo
+espírito do `x_command`:
+
+```json
+{"verification_id": "tests", "family": "deterministic",
+ "x_verifier": "python3 {graph_dir}/check_tests.py",
+ "x_verifier_timeout_seconds": 60}
+```
+
+- `x_verifier` é um template de argv, separado como a invocação de um binding —
+  **sem shell**. `{graph_dir}` vira o diretório do arquivo `--graph`, para o
+  template continuar portátil. Outros caminhos: absolutos ou no `PATH`.
+- `x_verifier_timeout_seconds` é **obrigatório** junto; nenhum padrão é inventado.
+  Estourou → `verification_status: timeout` (spec §6.2).
+- O core nunca lê esses campos; eles entram no `graph_version` como qualquer
+  outro byte — a identidade do verificador congela com o run.
+- O verificador roda com diretório de trabalho na pasta da tentativa do produtor
+  e `$OUT` apontando para o arquivo de evidência ao qual o veredito vai se
+  vincular (mais `DAGWELL_RUN_ID`, `DAGWELL_NODE_ID`, `DAGWELL_ATTEMPT`,
+  `DAGWELL_VERIFICATION_ID`, `DAGWELL_VERIFICATION_ATTEMPT`,
+  `DAGWELL_EVIDENCE_ID`). Antes de rodar, o arquivo em disco precisa ainda ter o
+  `artifact_digest` registrado no retorno; senão nada roda e nada é gravado
+  (`inconsistent`).
+- Ele escreve **um objeto JSON no stdout**: `{"verdict": "approved" |
+  "rejected", "reasons": ["..."]}`. Esse objeto é o veredito, gravado pela
+  superfície de máquina (`verdict`) com a família que o grafo declarou.
+- O exit code é fato de transporte, nunca veredito: ≠ 0 → `verification_status:
+  error`; estourou → `timeout`; 0 sem objeto válido → `error`. Nenhum desses
+  carrega veredito, e nenhum é reprovação: com o re-disparo automático desligado
+  (§13.12 aberta), o próximo `advance --go` grava `human_escalation` e o nó
+  espera o humano (`decide` ou `human-retry`).
+- Verificação sem `x_verifier` continua sendo sua: o piloto para nela e imprime
+  o passo manual (`request-verification`, depois `verdict`).
+
+Stdout, stderr e exit ficam em
+`<data-dir>/verifications/<operation>/<run_id>/<nó>/<verificação>/t<k>-v<va>/`
+(`result.json`, `log.txt`, `exit`), uma pasta por tentativa de verificação,
+nunca sobrescrita; o `reason` do veredito cita o `sha256` do `result.json`.
+
+### 5.8 Um comando para conduzir o run: `doctor` → `advance`
+
+O laço inteiro, sem Python e sem runner — `examples/template-report/` é a
+versão copiável desta seção.
+
+```bash
+dagwell doctor --graph graph.json --registry registry.json --data-dir data
+```
+
+Só leitura. Carrega grafo e registry fail-closed, acha o executável de cada
+binding, roda cada probe (custo zero), confere que todo tier exigido pelo grafo
+tem binding disponível, parseia cada `x_verifier` e acha executável e script,
+olha a pasta de dados. Sai 1 em qualquer linha `FAIL:`, e cada uma diz o que
+corrigir. Não imprime valor de ambiente. E diz o que não sabe: probe passando
+prova que o executável responde, **não** que um modelo está autenticado, tem
+cota ou presta — só o `--go` descobre isso.
+
+```bash
+RUN=$(dagwell start --ledger run.jsonl --graph graph.json --input input.txt)
+dagwell advance --ledger run.jsonl --graph graph.json --run $RUN \
+  --registry registry.json --data-dir data          # plano: NÃO gasta nada
+dagwell advance --ledger run.jsonl --graph graph.json --run $RUN \
+  --registry registry.json --data-dir data --go     # ISTO GASTA
+```
+
+Sem `--go`, `advance` é um plano: quais nós READY iriam para qual
+binding/modelo, qual verificador declarado rodaria e onde, qual gate humano
+abriria — sem run, sem evento, sem pasta, sem subprocesso de verificador, sem
+inferência. Só os probes de custo zero dos bindings rodam.
+
+Com `--go`, um único piloto (o lock do `work`) conduz o run até onde os
+contratos permitem sem humano, e então para:
+
+1. executa os nós READY por capacidade via worker (`work --go`), uma pasta por
+   tentativa, evidência derivada do que ficou em disco;
+2. para cada nó que voltou com evidência, roda as verificações que a ordem do
+   contrato exige em seguida — verificadores declarados como subprocessos, com a
+   decisão estruturada deles gravada como veredito;
+3. abre o gate humano quando ele é o próximo, e para ali;
+4. grava `human_escalation` quando um verificador não concluiu;
+5. repete enquanto algo foi escrito. Sem polling, sem retry silencioso.
+
+Para em: gate humano, produtor falhado, verificador reprovando (nó `failed`),
+erro/timeout de verificador (escalado), evidência em disco que não bate mais
+com o retorno (`inconsistent`), verificação sem `x_verifier` (passo manual
+impresso), nó `x_command` (runner externo), tier sem binding (recusa antes de
+gastar) ou verificação já em voo sem desfecho (ele não presume que o trabalho
+morreu — §13.4 aberta; observe com `resume(still_in_progress=...)` da
+biblioteca ou registre o desfecho).
+
+A saída mantém as quatro coisas separadas: `producer ...` (retorno do transporte
+e evidência), `verifier ...` (status e veredito), `gate ...` (aberto, esperando)
+e a decisão humana, que só o `decide` escreve. Termina com o `status`, cujas
+últimas linhas começam com `next:` — o que digitar agora. Sai 1 se algum
+produtor falhou, algum passo foi recusado ou inconsistente, ou há verificação
+em voo.
+
+Rode o mesmo comando de novo e nada duplica: despacho, veredito e pedido de gate
+são recusados pelas pré-condições do próprio ledger, e um segundo piloto no mesmo
+run é recusado pelo lock. Ctrl+C uma vez pede ao piloto que termine o passo
+atual, grave `run_interrupt_requested` e pare; o próximo `advance --go` continua
+o mesmo run com as mesmas pastas de tentativa. Um segundo Ctrl+C aborta na força
+e deixa o trabalho atual em voo (ver §4.9).
+
+```bash
+dagwell status --ledger run.jsonl --graph graph.json --run $RUN
+#   report: waiting_human attempt 1
+#   next: decide --node report approved|rejected --actor <you> [--reason ...]
+dagwell decide --ledger run.jsonl --graph graph.json --run $RUN --node report approved --actor rey
+dagwell advance ... --go      # continua; termina com "next: nothing — the run is completed"
+```
+
+`status` agora termina com linhas `next:` derivadas da projeção: o que bloqueia
+(`waiting_human`, `failed`/`rejected` com o `human-retry` que reabre, `in
+flight`) e o que digitar. Não tem autoridade nenhuma; só lê.
+
+Limites conhecidos desta candidata, ditos em vez de escondidos:
+
+- O produtor recebe só `$OUT`; achar a saída de uma dependência é assunto da
+  missão (convenção da pasta de tentativa, `../../<nó>/t<k>/out`).
+- Órfãos não são constatados pela CLI (§13.4 aberta): tentativa de produtor ou
+  verificação deixada em voo por perda abrupta precisa do `resume` da biblioteca
+  com um provedor de vivacidade explícito.
+- Sem política de retry/orçamento (§13.12 aberta): nó falhado espera
+  `human-retry`; verificador que não concluiu espera o humano.
+- Verificadores `model:<family>` são só subprocessos para o piloto; se gastam é
+  assunto da invocação, e a família é a afirmação do grafo.
+- `doctor` não verifica autenticação com provedor real; o primeiro `--go` contra
+  um binding real é o teste, e ele gasta.
+
 ### 5.6 Onde isso se encaixa no que você já faz
 
 O padrão vale para qualquer pipeline em que passos dependem uns dos outros e alguém
@@ -411,7 +543,9 @@ outro é só o `x_command`.
 | `start` | valida o grafo, congela a identidade, cria o run. Imprime o id |
 | `ready` | nós despacháveis após validar identidade e integridade do run |
 | `work` | planeja despachos por capacidade; `--go` executa com o adapter subprocess |
-| `status` | a projeção: estado do run, cada nó, anomalias |
+| `doctor` | diagnóstico só-leitura de grafo, registry, executáveis, probes, verificadores declarados, pasta de dados |
+| `advance` | conduz o run: `work --go` + verificadores declarados + abre o gate humano, e para (plano sem `--go`) |
+| `status` | a projeção: estado do run, cada nó, anomalias, e a próxima ação válida |
 | `dispatch` | registra que um nó foi entregue (**não o executa**) |
 | `return` | registra o retorno do transporte e, quando houve, a evidência |
 | `request-verification` | abre a verificação que a ordem exige em seguida |
@@ -422,7 +556,7 @@ outro é só o `x_command`.
 | `cancel` | cancela o run (terminal absorvente) |
 | `resume` | continua o mesmo run após interrupção |
 
-Todos os comandos, menos `demo` e `start`, recebem `--ledger`, `--graph` e `--run`.
+Todos os comandos, menos `demo`, `start` e `doctor`, recebem `--ledger`, `--graph` e `--run`.
 
 ## 7. Lendo um status
 
@@ -480,6 +614,7 @@ ou o ledger — conserte isso, não o guarda.
 | `run.jsonl` | o ledger: todos os eventos, append-only, um objeto JSON por linha |
 | `graphs/` | snapshots de grafo congelado, endereçados por hash de conteúdo |
 | `<data-dir>/runs/<operation>/<run_id>/<node_id>/t<k>/` | artefatos imutáveis de tentativa criados pelo worker; `$OUT` é o caminho absoluto de `out` nessa pasta |
+| `<data-dir>/verifications/<operation>/<run_id>/<node_id>/<verification_id>/t<k>-v<va>/` | `result.json`, `log.txt`, `exit` de um verificador declarado — um por tentativa de verificação |
 | `.<ledger-name>.<run-hash>.work.lock` ao lado do ledger | inode da trava local de piloto, preservado após a saída; não armazena estado do run |
 
 Preserve ledgers, snapshots congelados e artefatos de tentativa. Estado é um fold

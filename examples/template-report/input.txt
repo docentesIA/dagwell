@@ -1,0 +1,1 @@
+Synthetic report template — 100 seeded rows in [10, 20]; verify shape and facts; one human review.

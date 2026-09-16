@@ -14,6 +14,7 @@ does not own transport or verification authority.
 import argparse
 import getpass
 import json
+import signal
 import sys
 import tempfile
 from pathlib import Path
@@ -41,7 +42,7 @@ def _evidence(raw):
     return json.loads(raw)
 
 
-def _print_status(folded):
+def _print_status(folded, graph=None, revents=None):
     print(f"run {folded['run_id']}: {folded['run_state']} "
           f"(integrity: {folded['integrity']})")
     for nid, info in folded["nodes"].items():
@@ -50,6 +51,41 @@ def _print_status(folded):
     if folded["anomalies"]:
         for a in folded["anomalies"]:
             print(f"  ! {a}")
+    if graph is not None:
+        from dagwell.adapters import pilot
+        for line in pilot.next_actions(graph, folded, revents or []):
+            print(f"  {line}")
+
+
+def _print_pilot_report(report, go):
+    """One line per fact, producer and verifier kept apart; the verdict and
+    the human decision are named as what they are."""
+    for r in report:
+        nid = r.get("node_id", "")
+        if r["kind"] == "producer":
+            if r["action"] == "dispatch":
+                sel = r["selection"]
+                print(f"producer {nid} (attempt {r['attempt']}, tier {r['tier']}) "
+                      f"-> {sel['binding_id']}/{sel['model_id']} [{sel['family']}]"
+                      + ("" if go else " — would dispatch"))
+            elif r["action"] in ("executed", "failed", "completed"):
+                print(f"producer {nid} (attempt {r['attempt']}): {r['action']} — "
+                      f"exit {r['exit_code']}, evidence {r['evidence_id'] or 'none'}"
+                      f" — {r['attempt_dir']}")
+            else:
+                print(f"producer {nid}: {r['action']} — {r['reason']}")
+        elif r["kind"] == "gate":
+            print(f"gate {nid}/{r['verification_id']}: {r['action']} — {r['reason']}")
+        elif r["kind"] == "verification":
+            if r["action"] == "verified":
+                verdict = r["verdict"] or "null"
+                print(f"verifier {nid}/{r['verification_id']} (v{r['verification_attempt']}): "
+                      f"status {r['verification_status']}, verdict {verdict} -> node "
+                      f"{r['node_state']} — {r['verification_dir']}")
+            else:
+                print(f"verifier {nid}/{r['verification_id']}: {r['action']} — {r['reason']}")
+        else:
+            print(f"run: {r['action']} — {r['reason']}")
 
 
 def _emit(event):
@@ -159,6 +195,29 @@ def main(argv=None) -> int:
                         help="actually dispatch and execute — THIS SPENDS; "
                              "without it, nothing is written or spent")
 
+    p_doctor = sub.add_parser(
+        "doctor", help="read-only diagnosis of a configuration: graph, registry, "
+                       "executables, probes, declared verifiers, data dir")
+    p_doctor.add_argument("--graph", required=True)
+    p_doctor.add_argument("--registry", required=True)
+    p_doctor.add_argument("--data-dir")
+
+    p_adv = sub.add_parser(
+        "advance", help="drive the run as far as the contracts allow without a "
+                        "human: execute READY nodes, run declared verifiers, "
+                        "open the human gate, stop (plan without --go)")
+    common(p_adv)
+    p_adv.add_argument("--registry", required=True)
+    p_adv.add_argument("--data-dir", required=True)
+    p_adv.add_argument("--operation",
+                       help="runs/<operation>/ segment (default: graph_id)")
+    p_adv.add_argument("--node", help="process only this node")
+    p_adv.add_argument("--actor", default=getpass.getuser(),
+                       help="recorded on machine verdicts this pilot writes")
+    p_adv.add_argument("--go", action="store_true",
+                       help="actually execute — THIS SPENDS whatever the "
+                            "bindings and verifiers spend; without it, plan only")
+
     p_req = sub.add_parser("request-verification",
                            help="open the verification the order requires next")
     common(p_req)
@@ -208,6 +267,23 @@ def main(argv=None) -> int:
     if args.command == "demo":
         return _demo()
 
+    if args.command == "doctor":
+        from dagwell.adapters import pilot
+        try:
+            ok, lines = pilot.doctor(
+                Path(args.graph).read_text(encoding="utf-8"),
+                Path(args.registry).read_text(encoding="utf-8"),
+                args.data_dir, graph_dir=Path(args.graph).parent)
+        except OSError as exc:
+            print(f"FAIL: {exc}")
+            return 1
+        for line in lines:
+            print(line)
+        print("doctor: ok — nothing here proves a model answers; that is what "
+              "--go finds out" if ok else "doctor: FAIL — fix the lines above "
+              "before --go")
+        return 0 if ok else 1
+
     try:
         if args.command == "start":
             input_path = Path(args.input)
@@ -230,7 +306,7 @@ def main(argv=None) -> int:
                 # run_created is a different case: damaged identity, still
                 # readable diagnostically (§2).
                 raise LookupError(f"unknown run: {args.run}")
-            _print_status(fold(graph, revents, args.run))
+            _print_status(fold(graph, revents, args.run), graph, revents)
         elif args.command == "ready":
             nodes = runtime.ready_nodes(graph, ledger, args.run)
             if not nodes:
@@ -281,6 +357,52 @@ def main(argv=None) -> int:
                       "status / request-verification / verdict / decide.")
             if any(r['action'] in ('failed', 'refused') for r in results):
                 return 1
+        elif args.command == "advance":
+            from dagwell.adapters import pilot
+            from dagwell.adapters.registry import load_registry
+            registry = load_registry(
+                Path(args.registry).read_text(encoding="utf-8"))
+            graph_dir = Path(args.graph).parent
+            if not args.go:
+                report = pilot.plan(ledger, graph, args.run, registry,
+                                    args.data_dir, operation=args.operation,
+                                    node_id=args.node, graph_dir=graph_dir)
+                _print_pilot_report(report, go=False)
+                print("plan only — nothing was written or spent. Re-run with "
+                      "--go to execute (THIS SPENDS).")
+            else:
+                stop = {"asked": False}
+
+                def _on_interrupt(signum, frame):
+                    if stop["asked"]:
+                        raise KeyboardInterrupt
+                    stop["asked"] = True
+                    print("interrupt requested: finishing the current step, then "
+                          "stopping (press again to abort hard — that leaves "
+                          "work in flight)", file=sys.stderr)
+
+                previous = signal.signal(signal.SIGINT, _on_interrupt)
+                try:
+                    report = pilot.advance(
+                        ledger, graph, args.run, registry, args.data_dir,
+                        operation=args.operation, node_id=args.node,
+                        actor=args.actor, graph_dir=graph_dir,
+                        stop_requested=lambda: stop["asked"])
+                finally:
+                    signal.signal(signal.SIGINT, previous)
+                _print_pilot_report(report, go=True)
+                revents = ledger.run(args.run)
+                folded = fold(graph, revents, args.run)
+                _print_status(folded, graph, revents)
+                # nonzero when the run needs repair or attention beyond the
+                # ordinary human gate: a failed producer, a refused or
+                # inconsistent step, a verifier that rejected or did not
+                # conclude, work in flight with no owner
+                bad = ("failed", "refused", "inconsistent", "in_flight", "escalated")
+                if any(r["action"] in bad or (r["action"] == "verified"
+                                              and r.get("node_state") == "failed")
+                       for r in report):
+                    return 1
         elif args.command == "request-verification":
             _emit(operations.request_verification(
                 ledger, graph, args.run, args.node,

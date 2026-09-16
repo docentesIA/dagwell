@@ -33,7 +33,9 @@ The `subprocess` adapter can execute local commands through `work --go`, consumi
 whatever quota those commands use. Alternatively, you execute a step through a
 script, CLI, agent or person and record it through the governed operations.
 DAGWELL checks whether work may start and whether the returned evidence and
-approvals meet the graph's requirements. `work` without `--go` only plans.
+approvals meet the graph's requirements. `work` without `--go` only plans;
+`advance` (§5.8) composes `work --go` with the verifiers the graph declares and
+stops at the human gate.
 
 The one rule worth internalising:
 
@@ -384,6 +386,138 @@ In practice:
 - `dagwell land --reason budget_exhausted` exists precisely to stop without
   truncating work: what was in flight stays recorded, and `resume` picks it up.
 
+### 5.7 Declared verifiers: `x_verifier`
+
+The worker never runs verifications; the **pilot** (`dagwell advance`) runs
+the ones a graph declares. A verification entry may carry an operator field,
+in the same spirit as `x_command`:
+
+```json
+{"verification_id": "tests", "family": "deterministic",
+ "x_verifier": "python3 {graph_dir}/check_tests.py",
+ "x_verifier_timeout_seconds": 60}
+```
+
+- `x_verifier` is an argv template split like a binding invocation — **no
+  shell**. `{graph_dir}` is replaced by the directory of the `--graph` file so
+  a template stays portable. Other paths must be absolute or on `PATH`.
+- `x_verifier_timeout_seconds` is **mandatory** with it; no default is
+  invented. Expiry is `verification_status: timeout` (spec §6.2).
+- The core never reads these fields; they enter `graph_version` like every
+  other byte, so the verifier's identity is frozen with the run.
+- The verifier runs with its working directory in the producer's attempt
+  directory and `$OUT` pointing at the evidence file the verdict will bind to
+  (plus `DAGWELL_RUN_ID`, `DAGWELL_NODE_ID`, `DAGWELL_ATTEMPT`,
+  `DAGWELL_VERIFICATION_ID`, `DAGWELL_VERIFICATION_ATTEMPT`,
+  `DAGWELL_EVIDENCE_ID`). Before it runs, the file on disk must still hash to
+  the `artifact_digest` recorded at return; otherwise nothing runs and nothing
+  is recorded (`inconsistent`).
+- It writes **one JSON object to stdout**: `{"verdict": "approved" |
+  "rejected", "reasons": ["..."]}`. That object is the verdict, recorded
+  through the machine surface (`verdict`) with the family the graph declared.
+- Its exit code is a transport fact, never a verdict: nonzero →
+  `verification_status: error`; over time → `timeout`; exit 0 without a valid
+  object → `error`. None carries a verdict, and none is a rejection: with
+  automatic re-fire off (§13.12 open) the next `advance --go` records
+  `human_escalation` and the node waits for the human (`decide` or
+  `human-retry`).
+- Verifications without `x_verifier` are still yours to run: the pilot stops
+  at them and prints the manual step (`request-verification`, then `verdict`).
+
+Stdout, stderr and exit code land in
+`<data-dir>/verifications/<operation>/<run_id>/<node>/<verification>/t<k>-v<va>/`
+(`result.json`, `log.txt`, `exit`), one directory per verification attempt,
+never overwritten; the verdict's `reason` cites the `sha256` of `result.json`.
+
+### 5.8 Drive a run with one command: `doctor` → `advance`
+
+The full loop, no Python, no runner script — `examples/template-report/` is
+the copyable version of this section.
+
+```bash
+dagwell doctor --graph graph.json --registry registry.json --data-dir data
+```
+
+Read-only. Loads the graph and the registry fail-closed, finds each binding's
+executable, runs each zero-cost probe, checks that every tier the graph needs
+has an available binding, parses every `x_verifier` and finds its executable
+and script, looks at the data directory. Exit 1 on any `FAIL:` line, each of
+which names what to fix. It prints no environment value. It also says what it
+cannot know: a passing probe proves the executable answers, **not** that a
+model is authenticated, has quota, or is any good — only `--go` finds that out.
+
+```bash
+RUN=$(dagwell start --ledger run.jsonl --graph graph.json --input input.txt)
+dagwell advance --ledger run.jsonl --graph graph.json --run $RUN \
+  --registry registry.json --data-dir data          # plan: spends NOTHING
+dagwell advance --ledger run.jsonl --graph graph.json --run $RUN \
+  --registry registry.json --data-dir data --go     # THIS SPENDS
+```
+
+Without `--go`, `advance` is a plan: which READY capability nodes would be
+dispatched to which binding/model, which declared verifier would run where,
+which human gate would open — no run, no event, no directory, no verifier
+subprocess, no inference. Only the bindings' zero-cost probes run.
+
+With `--go`, one pilot (the `work` lock) drives the run as far as the contracts
+allow without a human, and then stops:
+
+1. execute READY capability nodes through the worker (`work --go`), one attempt
+   directory each, evidence derived from what landed on disk;
+2. for every node that returned with evidence, run the verifications the
+   contract order requires next — declared verifiers as subprocesses, their
+   structured decision recorded as the verdict;
+3. open the human gate when it is next, and stop there;
+4. record `human_escalation` when a verifier did not conclude;
+5. repeat while something was written. No polling, no silent retry.
+
+It stops at: a human gate, a failed producer, a rejecting verifier (the node is
+`failed`), a verifier error/timeout (escalated), a node whose evidence on disk
+no longer matches the return (`inconsistent`), a verification without
+`x_verifier` (manual step printed), an `x_command` node (external runner), an
+unservable tier (refused before spend), or a verification already in flight
+with no outcome (it does not assume that work died — §13.4 is open; observe it
+with the library's `resume(still_in_progress=...)` or record its outcome).
+
+The output keeps the four things apart: `producer ...` (transport return and
+evidence), `verifier ...` (status and verdict), `gate ...` (opened, waiting),
+and the human decision, which only `decide` writes. It ends with `status`,
+whose last lines start with `next:` — what to type now. Exit 1 if any producer
+failed, any step was refused or inconsistent, or a verification is in flight.
+
+Run the same command again and nothing duplicates: dispatch, verdict and gate
+requests are refused by the ledger's own preconditions, and a second pilot on
+the same run is refused by the lock. Ctrl+C once asks the pilot to finish the
+current step, write `run_interrupt_requested` and stop; the next `advance --go`
+continues the same run with the same attempt directories. A second Ctrl+C
+aborts hard and leaves the current work in flight (see §4.9).
+
+```bash
+dagwell status --ledger run.jsonl --graph graph.json --run $RUN
+#   report: waiting_human attempt 1
+#   next: decide --node report approved|rejected --actor <you> [--reason ...]
+dagwell decide --ledger run.jsonl --graph graph.json --run $RUN --node report approved --actor rey
+dagwell advance ... --go      # continues; ends with "next: nothing — the run is completed"
+```
+
+`status` now ends with `next:` lines derived from the projection: what blocks
+(`waiting_human`, `failed`/`rejected` with the `human-retry` that reopens it,
+`in flight`) and what to type. It has no authority; it reads.
+
+Known limits of this candidate, stated rather than papered over:
+
+- A producer receives only `$OUT`; locating a dependency's output is the
+  mission's business (attempt-directory convention, `../../<node>/t<k>/out`).
+- Orphans are not constated by the CLI (§13.4 open): a producer attempt or a
+  verification left in flight by an abrupt loss needs the library's `resume`
+  with an explicit liveness provider.
+- No retry/budget policy (§13.12 open): a failed node waits for `human-retry`;
+  a verifier that did not conclude waits for the human.
+- `model:<family>` verifiers are just subprocesses to the pilot; whether they
+  spend is the invocation's business, and the family is the graph's claim.
+- Authentication with a real provider is not verified by `doctor`; the first
+  `--go` against a real binding is the test, and it spends.
+
 ### 5.6 Where this fits
 
 The pattern holds for any pipeline where steps depend on each other and someone must
@@ -407,7 +541,9 @@ changes between them is only the `x_command`.
 | `start` | validate the graph, freeze its identity, create the run. Prints the run id |
 | `ready` | dispatchable nodes after run identity and integrity validation |
 | `work` | plan capability dispatches; `--go` executes them with the subprocess adapter |
-| `status` | the projection: run state, every node, anomalies |
+| `doctor` | read-only diagnosis of graph, registry, executables, probes, declared verifiers, data dir |
+| `advance` | drive the run: `work --go` + declared verifiers + open the human gate, then stop (plan without `--go`) |
+| `status` | the projection: run state, every node, anomalies, and the next valid action |
 | `dispatch` | record that a node was handed out (**does not run it**) |
 | `return` | record the transport return and, when produced, the evidence |
 | `request-verification` | open the verification the order requires next |
@@ -418,7 +554,7 @@ changes between them is only the `x_command`.
 | `cancel` | cancel the run (absorbing terminal) |
 | `resume` | continue the same run after an interruption |
 
-Every command except `demo` and `start` takes `--ledger`, `--graph` and `--run`.
+Every command except `demo`, `start` and `doctor` takes `--ledger`, `--graph` and `--run`.
 
 ## 7. Reading a status
 
@@ -475,6 +611,7 @@ ledger is wrong — fix that, not the guard.
 | `run.jsonl` | the ledger: every event, append-only, one JSON object per line |
 | `graphs/` | frozen graph snapshots, addressed by content hash |
 | `<data-dir>/runs/<operation>/<run_id>/<node_id>/t<k>/` | immutable attempt artifacts created by the worker; `$OUT` is the absolute path to `out` here |
+| `<data-dir>/verifications/<operation>/<run_id>/<node_id>/<verification_id>/t<k>-v<va>/` | a declared verifier's `result.json`, `log.txt`, `exit` — one per verification attempt |
 | `.<ledger-name>.<run-hash>.work.lock` beside the ledger | local pilot lock inode, retained after the worker exits; no run state stored |
 
 Preserve ledgers, frozen snapshots and attempt artifacts. State is a deterministic

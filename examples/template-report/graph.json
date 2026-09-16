@@ -1,0 +1,30 @@
+{
+  "graph_id": "report-template",
+  "nodes": [
+    {
+      "id": "dataset",
+      "deps": [],
+      "output_evidence": "artifact",
+      "capability_requirements": {"tier": "trivial"},
+      "mission": "import csv, os, random\nrandom.seed(7)\nwith open(os.environ['OUT'], 'w', newline='') as f:\n    w = csv.writer(f)\n    w.writerow(['id', 'value'])\n    for i in range(1, 101):\n        w.writerow([i, round(random.uniform(10.0, 20.0), 3)])\n",
+      "verifications": [
+        {"verification_id": "csv-shape", "family": "deterministic",
+         "x_verifier": "python3 {graph_dir}/check_dataset.py",
+         "x_verifier_timeout_seconds": 30}
+      ]
+    },
+    {
+      "id": "report",
+      "deps": ["dataset"],
+      "output_evidence": "artifact",
+      "capability_requirements": {"tier": "trivial"},
+      "mission": "import csv, glob, os, statistics\nsrc = sorted(glob.glob('../../dataset/t*/out'), key=lambda p: int(p.split('/t')[-1].split('/')[0]))[-1]\nrows = list(csv.DictReader(open(src, newline='')))\nvalues = [float(r['value']) for r in rows]\nwith open(os.environ['OUT'], 'w') as f:\n    f.write('# Synthetic report\\n\\n')\n    f.write(f'rows: {len(rows)}\\n')\n    f.write(f'mean: {statistics.mean(values):.3f}\\n')\n    f.write(f'min: {min(values):.3f}\\n')\n    f.write(f'max: {max(values):.3f}\\n')\n",
+      "verifications": [
+        {"verification_id": "report-facts", "family": "deterministic",
+         "x_verifier": "python3 {graph_dir}/check_report.py",
+         "x_verifier_timeout_seconds": 30},
+        {"verification_id": "review", "family": "human"}
+      ]
+    }
+  ]
+}

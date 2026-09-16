@@ -45,3 +45,29 @@ def attempt_dir(data_dir, *, operation: str, run_id: str, node_id: str,
     if create:
         path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+VERIFICATIONS_DIR = "verifications"
+
+
+def verification_dir(data_dir, *, operation: str, run_id: str, node_id: str,
+                     verification_id: str, attempt: int,
+                     verification_attempt: int) -> Path:
+    """Directory where a declared verifier's outputs (result, log, exit) are
+    born, one per verification attempt and never shared:
+
+        verifications/<operation>/<run_id>/<node_id>/<verification_id>/t<k>-v<va>/
+
+    A sibling of `runs/`, so the producer's attempt directory keeps only what
+    the producer wrote (the evidence) and the verifier's record stands apart."""
+    for label, value in (("attempt", attempt),
+                         ("verification_attempt", verification_attempt)):
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            raise ArtifactLayoutError(
+                f"{label} must be a positive integer, got {value!r}")
+    return (Path(data_dir) / VERIFICATIONS_DIR
+            / _component(operation, "operation")
+            / _component(run_id, "run_id")
+            / _component(node_id, "node_id")
+            / _component(verification_id, "verification_id")
+            / f"t{attempt}-v{verification_attempt}")

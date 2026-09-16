@@ -49,9 +49,10 @@ and records the evidence of what actually landed on disk. Under
 [v1.1, approved on 2026-09-04](docs/contracts/DAGWELL-ADAPTER-OUTPUT-EVIDENCE-SPEC-v1.1.md),
 `{model_id}` passes the selection as one invocation argument and is mandatory for
 multimodel bindings. Literal single-model bindings remain operator declarations,
-not provider attestations. Remote transports, automatic
-verification execution, and any retry/budget model remain ahead, each behind
-its own gate.
+not provider attestations. Since 0.0.3rc1 the pilot (`dagwell advance`) also runs
+the verifiers a graph declares as subprocesses and stops at the human gate.
+Remote transports and any retry/budget model remain ahead, each behind its own
+gate.
 
 The inverse model is still first-class, and still the part worth
 understanding: **you do the work, DAGWELL governs it.** You (a script, a human, an agent, a CI job) execute
@@ -63,16 +64,19 @@ or approval, and can reconstruct the whole state from events alone.
 |---|---|
 | Declare a graph; fail-closed validation before any spend | Remote transports (http, sdk, mcp, a2a) |
 | Start a run with a frozen graph identity | Retry policy or budget model |
-| Dispatch to local CLIs by difficulty tier (`dagwell work --go`) | Automatic verification execution |
-| Record dispatch and return; refuse malformed evidence at the boundary | Session persistence per platform |
+| Dispatch to local CLIs by difficulty tier (`dagwell work --go`) | Session persistence per platform |
+| Record dispatch and return; refuse malformed evidence at the boundary | Orphan constatation from the CLI (§13.4 open) |
 | Request verifications in contract order; record machine verdicts | |
+| Run verifiers the graph declares (`x_verifier`) and drive the whole loop to the human gate (`dagwell advance --go`) | |
+| Diagnose a configuration before spending (`dagwell doctor`) | |
 | Human gates: approve, reject, retry, escalate, cancel | |
 | Land a run; resume after interruption; detect orphans | |
 | Deterministic state via `fold`; tamper-proof checkpoint | |
 
-The CLI drives the whole cycle — `start`, `ready`, `dispatch`, `return`,
-`request-verification`, `verdict`, `decide`, `human-retry`, `land`, `resume`,
-`cancel`, `status` — so you never need to write Python to use it. The same
+The CLI drives the whole cycle — `doctor`, `start`, `advance`, `ready`,
+`dispatch`, `return`, `request-verification`, `verdict`, `decide`,
+`human-retry`, `land`, `resume`, `cancel`, `status` — so you never need to
+write Python to use it; `examples/template-report/` is the copyable flow. The same
 operations are available as a library. **[Full manual: docs/USAGE.md](docs/USAGE.md)**
 ([em português](docs/USAGE.pt-BR.md)).
 

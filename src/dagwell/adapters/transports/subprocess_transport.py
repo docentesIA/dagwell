@@ -87,11 +87,20 @@ def execute(binding: dict, mission: str, out_path: str, *, env: dict,
     """Run one attempt. Returns transport facts only."""
     argv = build_argv(binding["invocation"], mission, model_id=model_id)
     output = Path(out_path).resolve()
-    child_env = {**env, "OUT": str(output)}
+    return run_argv(argv, env={**env, "OUT": str(output)}, cwd=output.parent,
+                    timeout_seconds=binding["timeout_seconds"])
+
+
+def run_argv(argv: list[str], *, env: dict, cwd, timeout_seconds,
+             stdout=None, stderr=None) -> dict:
+    """Spawn one process group, wait, reap — the mechanics shared by producer
+    attempts and declared verifiers. Returns transport facts only: the same
+    timeout ladder applies to both (spec §6.2/§6.3); who interprets the facts
+    is the caller's contract, never this function."""
     started = time.monotonic()
     try:
-        proc = subprocess.Popen(argv, env=child_env, cwd=output.parent,
-                                start_new_session=True)
+        proc = subprocess.Popen(argv, env=env, cwd=cwd, stdout=stdout,
+                                stderr=stderr, start_new_session=True)
     except OSError as exc:
         # No process existed, hence there is no exit status to invent. Avoid
         # exception messages: executable names and environment may be private.
@@ -101,7 +110,7 @@ def execute(binding: dict, mission: str, out_path: str, *, env: dict,
                 "transport_error": {"type": type(exc).__name__, "errno": exc.errno}}
     timed_out = False
     try:
-        proc.wait(timeout=binding["timeout_seconds"])
+        proc.wait(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
         timed_out = True
         for sig, grace in ((signal.SIGINT, GRACE_SECONDS),
