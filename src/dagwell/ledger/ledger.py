@@ -156,8 +156,15 @@ class Ledger:
 
     @staticmethod
     def _parse(raw: str) -> list[dict]:
+        # JSONL frames on the physical newline and on nothing else. str.splitlines
+        # also breaks on U+0085, U+2028, U+2029, U+000B, U+000C and U+001C-1E,
+        # which json.dumps(ensure_ascii=False) writes verbatim INSIDE strings —
+        # a record holding one of them was written whole and then read as two
+        # broken halves. The bytes on disk were always correct; the reader was
+        # not. A trailing CR is left to the JSON parser, which treats it as
+        # whitespace, so CRLF ledgers read unchanged.
         parsed = []
-        for n, line in enumerate(raw.splitlines(), start=1):
+        for n, line in enumerate(raw.split("\n"), start=1):
             if not line.strip():
                 continue
             try:

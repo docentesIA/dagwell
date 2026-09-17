@@ -266,12 +266,16 @@ def test_graceful_interrupt_records_intent_and_the_command_resumes():
         assert report[-1]["action"] == "interrupt_recorded"
         types = [t[0] for t in _types(led, rid)]
         assert types[-1] == "run_interrupt_requested"
-        # what finished in the step is recorded; b was never dispatched
+        # what finished in the step is recorded; b was never dispatched, and
+        # a's verifier was not started either — once the interrupt is asked
+        # for, nothing new opens (0.0.4, reliability review D4)
         assert types.count("node_dispatched") == 1
-        assert fold(graph, led.run(rid), rid)["nodes"]["a"]["state"] == "completed"
+        assert "verification_requested" not in types
+        assert fold(graph, led.run(rid), rid)["nodes"]["a"]["state"] == "executed"
         # same command again: same run, same attempt dirs, the rest proceeds
         report = pilot.advance(led, graph, rid, reg, data, actor="t")
-        assert [r.get("node_id") for r in report] == ["b", "b", "b"]
+        assert [r.get("node_id") for r in report] == ["a", "b", "b", "b"]
+        assert fold(graph, led.run(rid), rid)["nodes"]["a"]["state"] == "completed"
         assert (data / "runs" / "pilot-test" / rid / "a" / "t1" / "out").exists()
         assert not (data / "runs" / "pilot-test" / rid / "a" / "t2").exists()
 
@@ -340,10 +344,12 @@ def test_doctor_reports_actionable_failures_without_secrets():
     assert not ok and any(l.startswith("FAIL: registry") for l in lines)
     ok, lines = pilot.doctor("{}", REGISTRY, env=env)
     assert not ok and any(l.startswith("FAIL: graph") for l in lines)
-    # verifier script path that does not exist
+    # a verifier script the operator DECLARED as a path ({graph_dir}) and that
+    # does not exist. A bare argument is NOT a path just because it holds a
+    # slash — inline code and URLs do too (0.0.4, reliability review D5).
     g = json.loads(_graph())
-    g["nodes"][0]["verifications"][0]["x_verifier"] = PY + " /nowhere/check.py"
-    ok, lines = pilot.doctor(json.dumps(g), REGISTRY, env=env)
+    g["nodes"][0]["verifications"][0]["x_verifier"] = PY + " {graph_dir}/check.py"
+    ok, lines = pilot.doctor(json.dumps(g), REGISTRY, env=env, graph_dir="/nowhere")
     assert not ok and any("'/nowhere/check.py' not found" in l for l in lines)
 
 

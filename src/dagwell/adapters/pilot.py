@@ -82,14 +82,23 @@ def verifier_declaration(verification: dict, *, graph_dir=None):
         raise PilotRefused(
             f"verification {vid!r}: x_verifier_timeout_seconds must be a "
             "positive number (mandatory with x_verifier, no invented default)")
+    path_args = []
     if any(GRAPH_DIR_MARKER in a for a in argv):
         if graph_dir is None:
             raise PilotRefused(
                 f"verification {vid!r}: x_verifier uses {GRAPH_DIR_MARKER} "
                 "but no graph directory is known")
-        argv = [a.replace(GRAPH_DIR_MARKER, str(Path(graph_dir).resolve()))
-                for a in argv]
-    return {"argv": argv, "timeout_seconds": timeout}
+        root = str(Path(graph_dir).resolve())
+        expanded = [a.replace(GRAPH_DIR_MARKER, root) for a in argv]
+        # A token the operator WROTE as {graph_dir}/... is a path by their own
+        # declaration, and doctor may check it exists. A marker inside a larger
+        # token (a flag value, a URL) is data, and so is every other argument:
+        # an argument is not a path because it contains a slash — inline code,
+        # regexes and URLs contain slashes too.
+        path_args = [e for a, e in zip(argv, expanded)
+                     if a.startswith(GRAPH_DIR_MARKER)]
+        argv = expanded
+    return {"argv": argv, "timeout_seconds": timeout, "path_args": path_args}
 
 
 def _verification(graph, node_id, vid):
@@ -127,9 +136,17 @@ def _manifest_mismatch(adir: Path, manifest: list) -> str | None:
     bytes — a verdict about other bytes would be laundered into the record."""
     for entry in manifest:
         path = adir / entry["path"]
-        if path.is_symlink() or not path.is_file():
-            return f"{entry['path']} is missing from {adir}"
-        if "sha256:" + _sha256(path) != entry["artifact_digest"]:
+        try:
+            if path.is_symlink() or not path.is_file():
+                return f"{entry['path']} is missing from {adir}"
+            digest = "sha256:" + _sha256(path)
+        except OSError as exc:
+            # A verifier can leave the evidence unreadable (chmod, a dangling
+            # mount). Unreadable is "cannot verify", not an exception that
+            # abandons an open verification with no outcome.
+            return (f"{entry['path']} cannot be read in {adir} "
+                    f"({type(exc).__name__})")
+        if digest != entry["artifact_digest"]:
             return (f"{entry['path']} on disk differs from the artifact_digest "
                     f"recorded at return ({adir})")
     return None
@@ -273,11 +290,10 @@ def doctor(graph_text, registry_text, data_dir=None, *, graph_dir=None,
                     fail(f"verifier {nid}/{vid}: executable "
                          f"{decl['argv'][0]!r} not found on PATH")
                     continue
-                missing = [a for a in decl["argv"][1:]
-                           if "/" in a and not Path(a).exists()
-                           and not a.startswith("-")]
+                missing = [a for a in decl["path_args"] if not Path(a).exists()]
                 if missing:
-                    fail(f"verifier {nid}/{vid}: path {missing[0]!r} not found")
+                    fail(f"verifier {nid}/{vid}: {missing[0]!r} not found "
+                         f"(declared as a path through {GRAPH_DIR_MARKER})")
                     continue
                 lines.append(f"ok: verifier {nid}/{vid} ({fam}): "
                              f"{shlex.join(decl['argv'])} "
@@ -300,10 +316,24 @@ def doctor(graph_text, registry_text, data_dir=None, *, graph_dir=None,
 # -- plan / advance --------------------------------------------------------
 
 def _verification_step(ledger, graph, run_id, data_dir, *, operation,
-                       node_id, actor, env, go, graph_dir):
+                       node_id, actor, env, go, graph_dir, stop_requested=None):
     """One pass over nodes owing verification: what the contract order says
-    is due next, done — or the exact reason it was not."""
+    is due next, done — or the exact reason it was not.
+
+    Once an interruption has been requested, nothing NEW is opened here
+    (§10(a): no new dispatches). A verifier already running is always seen
+    through to its recorded outcome — the check happens before starting one,
+    never after."""
     report, progressed = [], False
+
+    def interrupted(nid, vid, kind="verification"):
+        if not (go and stop_requested is not None and stop_requested()):
+            return False
+        report.append({"kind": kind, "node_id": nid, "verification_id": vid,
+                       "action": "not_started",
+                       "reason": "interrupt requested — nothing new is opened "
+                                 "(§10(a)); the next advance --go continues"})
+        return True
     data_root = Path(data_dir).resolve()   # $OUT and cwd must be absolute
     revents = ledger.run(run_id)
     folded = fold(graph, revents, run_id)
@@ -341,6 +371,8 @@ def _verification_step(ledger, graph, run_id, data_dir, *, operation,
                                          "still_in_progress=...) or record its outcome"})
             continue
         if due[0] == "escalate":
+            if interrupted(nid, due[1]):
+                continue
             if go:
                 operations.escalate(ledger, graph, run_id, nid)
                 progressed = True
@@ -353,6 +385,8 @@ def _verification_step(ledger, graph, run_id, data_dir, *, operation,
             continue
         _, vid, family = due
         if family == "human":
+            if interrupted(nid, vid, kind="gate"):
+                continue
             if go:
                 operations.request_verification(ledger, graph, run_id, nid, vid)
                 progressed = True
@@ -402,6 +436,8 @@ def _verification_step(ledger, graph, run_id, data_dir, *, operation,
                            "reason": f"{shlex.join(decl['argv'])} in {adir} "
                                      f"(timeout {decl['timeout_seconds']}s)"})
             continue
+        if interrupted(nid, vid):
+            continue
         req = operations.request_verification(ledger, graph, run_id, nid, vid)
         va = req["verification_attempt"]
         vdir = verification_dir(data_root, operation=operation, run_id=run_id,
@@ -412,6 +448,22 @@ def _verification_step(ledger, graph, run_id, data_dir, *, operation,
             ids={"run_id": run_id, "node_id": nid, "attempt": k,
                  "verification_id": vid, "verification_attempt": va,
                  "evidence_id": evidence_id})
+        # The verdict binds to the evidence recorded at return (I29), and the
+        # verifier ran with write access to that file. Look again: if the bytes
+        # under the verdict are no longer the bytes it was issued about, the
+        # verification did not conclude — `error`, never `rejected` (I7), so
+        # the node does not complete and its descendants stay blocked. The
+        # verifier's own record is kept; nothing is erased.
+        # This is a re-read, not immutability: a change made after this check,
+        # or one reverted before it, is invisible here. Isolating or snapshotting
+        # the evidence is separate hardening, not a promise made by 0.0.4.
+        tampered = _manifest_mismatch(adir, manifest)
+        if tampered:
+            status, verdict = "error", None
+            reason = (f"evidence check after {Path(decl['argv'][0]).name} "
+                      f"failed ({tampered}) — the verdict was issued about "
+                      "other bytes and is not accepted; original reason: "
+                      + reason)
         operations.record_machine_verdict(
             ledger, graph, run_id, nid, vid, verification_status=status,
             verdict=verdict, actor=actor, reason=reason)
@@ -481,7 +533,7 @@ def advance(ledger, graph, run_id, registry, data_dir, *, operation=None,
             vreport, vprog = _verification_step(
                 ledger, graph, run_id, data_dir, operation=operation,
                 node_id=node_id, actor=actor, env=env, go=True,
-                graph_dir=graph_dir)
+                graph_dir=graph_dir, stop_requested=stop_requested)
             report.extend(vreport)
             progressed = progressed or vprog
             if stop_requested is not None and stop_requested():

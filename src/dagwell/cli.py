@@ -253,10 +253,20 @@ def main(argv=None) -> int:
     common(p_land)
     p_land.add_argument("--reason", required=True, choices=LAND_REASONS)
 
-    p_resume = sub.add_parser("resume",
-                              help="resume the same run after interruption")
-    common(p_resume)
-    p_resume.add_argument("--input", required=True)
+    p_resume = sub.add_parser(
+        "resume", help="resume the same run after an interruption")
+    p_resume.add_argument("--ledger", required=True,
+                          help="path to the ledger JSONL")
+    p_resume.add_argument("--run", required=True, help="run id")
+    p_resume.add_argument("--input", required=True,
+                          help="the run's input file — its hash must match")
+    p_resume.add_argument("--graph",
+                          help="path to the graph JSON; its identity is checked "
+                               "against the one frozen at start and a different "
+                               "graph is refused")
+    p_resume.add_argument("--from-snapshot", action="store_true",
+                          help="resume from the frozen snapshot beside the "
+                               "ledger (I24) — needs no original file")
 
     p_cancel = sub.add_parser("cancel", help="cancel the run (absorbing)")
     common(p_cancel)
@@ -293,6 +303,23 @@ def main(argv=None) -> int:
                 input_text=input_path.read_text(encoding="utf-8"),
                 input_ref=args.input_ref or f"file://{input_path.resolve()}")
             print(founding["run_id"])
+            return 0
+
+        if args.command == "resume":
+            # The graph is not decoration here: it is the identity the run is
+            # resumed against. Passing one means it gets validated (a different
+            # graph is refused, never silently ignored); the frozen snapshot is
+            # an explicit choice, not a fallback that hides a mismatch.
+            if bool(args.graph) == bool(args.from_snapshot):
+                raise ValueError(
+                    "resume needs exactly one graph source: --graph <file> "
+                    "(validated against the frozen identity) or --from-snapshot "
+                    "(the frozen copy beside the ledger, no original needed)")
+            graph_text = (None if args.from_snapshot
+                          else Path(args.graph).read_text(encoding="utf-8"))
+            _emit(runtime.resume(Ledger(args.ledger), graph_text,
+                                 Path(args.input).read_text(encoding="utf-8"),
+                                 args.run))
             return 0
 
         ledger, graph = _load(args)
@@ -420,10 +447,6 @@ def main(argv=None) -> int:
                                     actor=args.actor))
         elif args.command == "land":
             _emit(operations.land_run(ledger, graph, args.run, args.reason))
-        elif args.command == "resume":
-            _emit(runtime.resume(ledger, None,
-                                 Path(args.input).read_text(encoding="utf-8"),
-                                 args.run))
         elif args.command == "cancel":
             _emit(human.cancel_run(ledger, graph, args.run, actor=args.actor))
     except Exception as exc:  # presentation: report, exit nonzero

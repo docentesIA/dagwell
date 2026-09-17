@@ -222,12 +222,22 @@ model (§13.12 is open).
 
 ```bash
 dagwell resume --ledger run.jsonl --graph graph.json --run $RUN --input input.txt
+# or, when the original file is gone:
+dagwell resume --ledger run.jsonl --from-snapshot --run $RUN --input input.txt
 ```
 
-Resume continues **the same run**, validating that the graph and input still match
-the identity frozen at `start`. A different graph is refused rather than silently
-accepted. The frozen graph snapshot is stored beside the ledger, so resume works
-even if you lost the original file.
+Resume continues **the same run** against the identity frozen at `start`. Exactly
+one graph source is required, and the choice is yours to make explicitly:
+
+| Source | What it does |
+|---|---|
+| `--graph <file>` | the file's `graph_version` must equal the one in `run_created`; a different graph is **refused**, never silently ignored |
+| `--from-snapshot` | resumes from the frozen copy beside the ledger (I24), verified against `graph_version` — no original file needed |
+
+Passing both, or neither, is refused: a fallback that quietly reaches for the
+snapshot would hide exactly the mismatch you want to hear about. `--input` is
+always checked against the frozen `input_hash`, and a missing or corrupted
+snapshot is refused rather than worked around.
 
 ## 5. Binding it to real CLIs
 
@@ -446,6 +456,14 @@ which names what to fix. It prints no environment value. It also says what it
 cannot know: a passing probe proves the executable answers, **not** that a
 model is authenticated, has quota, or is any good — only `--go` finds that out.
 
+**What `doctor` checks in an `x_verifier`, and what it does not.** It resolves
+the **executable** on `PATH`, and it checks the paths you declared through the
+supported convention, `{graph_dir}/…`. It does **not** try to guess which of
+the remaining arguments are files: a verifier command is arbitrary, and inline
+code, regexes, URLs and payloads all contain slashes. So `doctor: ok` does not
+promise that some loose script mentioned inside the command exists — write the
+path as `{graph_dir}/check.py` if you want `doctor` to look at it.
+
 ```bash
 RUN=$(dagwell start --ledger run.jsonl --graph graph.json --input input.txt)
 dagwell advance --ledger run.jsonl --graph graph.json --run $RUN \
@@ -517,6 +535,9 @@ Known limits of this candidate, stated rather than papered over:
   spend is the invocation's business, and the family is the graph's claim.
 - Authentication with a real provider is not verified by `doctor`; the first
   `--go` against a real binding is the test, and it spends.
+- `doctor` does not validate every path inside an arbitrary command: it checks
+  the executable and the paths declared through `{graph_dir}`. A clean run does
+  not prove a loose script exists.
 
 ### 5.6 Where this fits
 
@@ -552,7 +573,7 @@ changes between them is only the `x_command`.
 | `human-retry` | open producer attempt *k+1* after a rejection or failure |
 | `land` | end the run with work still pending, WIP preserved |
 | `cancel` | cancel the run (absorbing terminal) |
-| `resume` | continue the same run after an interruption |
+| `resume` | continue the same run after an interruption (`--graph` validated, or `--from-snapshot`) |
 
 Every command except `demo`, `start` and `doctor` takes `--ledger`, `--graph` and `--run`.
 

@@ -23,6 +23,9 @@ import time
 # runtime choice, not contract — make it configurable when a real workload
 # needs a longer goodbye.
 GRACE_SECONDS = 10.0
+# A probe is a liveness question, not work: it never deserves the long goodbye
+# a real attempt gets, but it gets the same ladder.
+PROBE_GRACE_SECONDS = 1.0
 
 
 class TransportError(Exception):
@@ -92,11 +95,17 @@ def execute(binding: dict, mission: str, out_path: str, *, env: dict,
 
 
 def run_argv(argv: list[str], *, env: dict, cwd, timeout_seconds,
-             stdout=None, stderr=None) -> dict:
+             stdout=None, stderr=None, grace_seconds=None) -> dict:
     """Spawn one process group, wait, reap — the mechanics shared by producer
     attempts and declared verifiers. Returns transport facts only: the same
     timeout ladder applies to both (spec §6.2/§6.3); who interprets the facts
-    is the caller's contract, never this function."""
+    is the caller's contract, never this function.
+
+    `grace_seconds=None` means the module's GRACE_SECONDS, read at call time —
+    a producer's goodbye is never shortened by a caller that wants a quicker
+    answer, and never frozen at import either."""
+    if grace_seconds is None:
+        grace_seconds = GRACE_SECONDS
     started = time.monotonic()
     try:
         proc = subprocess.Popen(argv, env=env, cwd=cwd, stdout=stdout,
@@ -113,8 +122,8 @@ def run_argv(argv: list[str], *, env: dict, cwd, timeout_seconds,
         proc.wait(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
         timed_out = True
-        for sig, grace in ((signal.SIGINT, GRACE_SECONDS),
-                           (signal.SIGTERM, GRACE_SECONDS)):
+        for sig, grace in ((signal.SIGINT, grace_seconds),
+                           (signal.SIGTERM, grace_seconds)):
             _signal_group(proc, sig)
             if _wait_group(proc, grace):
                 break
@@ -137,11 +146,14 @@ def probe(binding: dict, *, env: dict, timeout_seconds: float = 10.0) -> bool:
     command = binding.get("probe")
     if not command:
         return True
-    try:
-        result = subprocess.run(shlex.split(command), env=env,
-                                timeout=timeout_seconds,
-                                stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL)
-    except (subprocess.TimeoutExpired, OSError):
-        return False
-    return result.returncode == 0
+    # Same spawn/kill mechanics as an attempt (its own session, the §6.3
+    # ladder, a bounded wait), so a probe that times out does not leave a
+    # descendant behind still writing after the answer was given. The ladder
+    # only ever signals the probe's OWN group, never the caller's. Nothing
+    # here contains a process that deliberately leaves its session; that
+    # needs a sandbox this transport does not provide.
+    facts = run_argv(shlex.split(command), env=env, cwd=None,
+                     timeout_seconds=timeout_seconds,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     grace_seconds=PROBE_GRACE_SECONDS)
+    return facts["exit_code"] == 0 and not facts["timed_out"]

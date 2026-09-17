@@ -223,12 +223,22 @@ ou nó que ainda deve sua verificação. Os motivos `human_rejection` e
 
 ```bash
 dagwell resume --ledger run.jsonl --graph graph.json --run $RUN --input input.txt
+# ou, quando o arquivo original não existe mais:
+dagwell resume --ledger run.jsonl --from-snapshot --run $RUN --input input.txt
 ```
 
-O resume continua **o mesmo run**, validando que grafo e entrada ainda batem com a
-identidade congelada no `start`. Um grafo diferente é recusado, não aceito em
-silêncio. O snapshot do grafo congelado fica ao lado do ledger, então o resume
-funciona mesmo se você perdeu o arquivo original.
+O resume continua **o mesmo run** contra a identidade congelada no `start`. Exige
+exatamente uma fonte de grafo, e a escolha é sua, explícita:
+
+| Fonte | O que faz |
+|---|---|
+| `--graph <arquivo>` | o `graph_version` do arquivo tem de ser igual ao do `run_created`; grafo diferente é **recusado**, nunca ignorado em silêncio |
+| `--from-snapshot` | retoma pela cópia congelada ao lado do ledger (I24), verificada contra o `graph_version` — não precisa do arquivo original |
+
+Passar as duas, ou nenhuma, é recusado: um fallback que pega o snapshot caladinho
+esconderia justamente a divergência que você quer ouvir. O `--input` é sempre
+conferido contra o `input_hash` congelado, e um snapshot ausente ou corrompido é
+recusado, não contornado.
 
 ## 5. Amarrando aos CLIs de verdade
 
@@ -447,6 +457,14 @@ corrigir. Não imprime valor de ambiente. E diz o que não sabe: probe passando
 prova que o executável responde, **não** que um modelo está autenticado, tem
 cota ou presta — só o `--go` descobre isso.
 
+**O que o `doctor` confere num `x_verifier`, e o que não confere.** Ele resolve
+o **executável** no `PATH` e confere os caminhos que você declarou pela convenção
+suportada, `{graph_dir}/…`. Ele **não** tenta adivinhar quais dos demais
+argumentos são arquivos: o comando de um verificador é arbitrário, e código
+inline, regex, URL e payload também têm barra. Portanto `doctor: ok` não promete
+que algum script avulso citado dentro do comando exista — escreva o caminho como
+`{graph_dir}/check.py` se quiser que o `doctor` olhe para ele.
+
 ```bash
 RUN=$(dagwell start --ledger run.jsonl --graph graph.json --input input.txt)
 dagwell advance --ledger run.jsonl --graph graph.json --run $RUN \
@@ -519,6 +537,9 @@ Limites conhecidos desta candidata, ditos em vez de escondidos:
   assunto da invocação, e a família é a afirmação do grafo.
 - `doctor` não verifica autenticação com provedor real; o primeiro `--go` contra
   um binding real é o teste, e ele gasta.
+- `doctor` não valida todos os caminhos dentro de um comando arbitrário: confere
+  o executável e os caminhos declarados por `{graph_dir}`. Resultado limpo não
+  prova que um script avulso exista.
 
 ### 5.6 Onde isso se encaixa no que você já faz
 
@@ -554,7 +575,7 @@ outro é só o `x_command`.
 | `human-retry` | abre a tentativa *k+1* após reprovação ou falha |
 | `land` | encerra o run com trabalho pendente, preservando o WIP |
 | `cancel` | cancela o run (terminal absorvente) |
-| `resume` | continua o mesmo run após interrupção |
+| `resume` | continua o mesmo run após interrupção (`--graph` validado, ou `--from-snapshot`) |
 
 Todos os comandos, menos `demo`, `start` e `doctor`, recebem `--ledger`, `--graph` e `--run`.
 

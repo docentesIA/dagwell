@@ -218,9 +218,14 @@ O que o torna conferível não é quem digitou:
   a matriz T1–T22, hardening e regressões. Só biblioteca padrão, sem rede, sem cota:
   `python3 tools/run_tests.py` informa os resultados atuais.
 - **Mudanças e limites continuam documentados** por versão:
+  [0.0.4](docs/RELEASE-0.0.4.md) (revisão de confiabilidade: framing do ledger,
+  re-checagem de evidência, contenção do probe, interrupção, doctor, resume),
   [0.0.3](docs/RELEASE-0.0.3.md) (camada piloto, verificadores declarados) e
   [0.0.2](docs/RELEASE-0.0.2.md) (confiabilidade de worker e ledger). Cada versão passa
   por um gate humano antes de receber tag e push.
+- **Revisão independente é achado, não opinião**: os seis defeitos corrigidos na
+  0.0.4 foram reproduzidos antes de qualquer alteração, e cada um vem com o teste
+  que falha sem a sua correção.
 - **Numeração de versão** segue o [ADR-0012](docs/decisions/ADR-0012-public-version-numbering.md):
   versões públicas são só `0.0.n`, um incremento por publicação, tag `v0.0.n`;
   sufixos `rc` existem apenas como controle interno de candidata e nunca são publicados.

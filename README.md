@@ -217,9 +217,14 @@ What makes it checkable is not who typed it:
   matrix, hardening coverage and regression checks. Stdlib only, no network, no
   quota: `python3 tools/run_tests.py` reports the current results.
 - **Changes and limits remain documented** per release:
+  [0.0.4](docs/RELEASE-0.0.4.md) (reliability review: ledger framing, evidence
+  re-check, probe containment, interrupt, doctor, resume),
   [0.0.3](docs/RELEASE-0.0.3.md) (pilot layer, declared verifiers) and
   [0.0.2](docs/RELEASE-0.0.2.md) (worker and ledger reliability). Each release passes
   a human gate before it is tagged and pushed.
+- **An independent review is a finding, not an opinion**: the six defects fixed in
+  0.0.4 were reproduced before being touched, and each one ships with the test that
+  fails without its fix.
 - **Versioning** follows [ADR-0012](docs/decisions/ADR-0012-public-version-numbering.md):
   public versions are `0.0.n` only, one increment per publication, tagged `v0.0.n`;
   `rc` suffixes exist only as internal candidate control and are never published.
